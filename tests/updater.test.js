@@ -7,6 +7,7 @@ const test = require('node:test')
 const { migrateUserFiles } = require('../scripts/updater/ConfigMigrator')
 const {
     DEFAULT_BACKUP_PATHS,
+    DEFAULT_EXCLUDES,
     DEFAULT_MANAGED_PATHS,
     DEFAULT_OBSOLETE_PATHS,
     UpdateManager
@@ -144,6 +145,17 @@ test('updater knows old local dashboard source is obsolete', () => {
     assert.ok(DEFAULT_OBSOLETE_PATHS.includes('src/core/DashboardServer.ts'))
     assert.ok(DEFAULT_MANAGED_PATHS.includes('src'))
     assert.ok(DEFAULT_MANAGED_PATHS.includes('plugins/core'))
+})
+
+test('updater skips root repository tooling files at runtime', () => {
+    assert.ok(DEFAULT_EXCLUDES.includes('.github'))
+    assert.ok(DEFAULT_EXCLUDES.includes('.dockerignore'))
+    assert.ok(DEFAULT_EXCLUDES.includes('.eslintrc.js'))
+    assert.ok(DEFAULT_EXCLUDES.includes('.gitattributes'))
+    assert.ok(DEFAULT_EXCLUDES.includes('.gitignore'))
+    assert.ok(DEFAULT_EXCLUDES.includes('.node-version'))
+    assert.ok(DEFAULT_EXCLUDES.includes('.nvmrc'))
+    assert.ok(DEFAULT_EXCLUDES.includes('.prettierrc'))
 })
 
 test('dependency sync chooses npm ci when package-lock is present', () => {

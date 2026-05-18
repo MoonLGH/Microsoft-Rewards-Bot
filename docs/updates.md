@@ -30,6 +30,8 @@ Set `MSRB_UPDATE_REQUIRE_SIGNATURE=1` only if you are maintaining a signed priva
 
 The updater never backs up internal updater state, Git metadata, dependencies, or build output. Those paths are preserved by skipping them during the copy step, not by recursively copying them into `.updates/backup`.
 
+Root repository tooling files such as `.dockerignore`, `.gitignore`, `.node-version`, and `.github/` are also skipped. They are not required at runtime and can be protected on Windows service-style installs such as `C:\ProgramData`.
+
 Before copying the new release, the updater now prunes managed project areas such as `src/`, `scripts/`, `docs/`, and `plugins/core/` against the downloaded archive. This removes stale files that no longer exist in the release while still preserving the user-owned paths listed below.
 
 ## Preserved User Files
