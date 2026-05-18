@@ -72,5 +72,5 @@
         "src/core/bing-search-activity-queries.json",
         "src/core/search-queries.json"
     ],
-    "exclude": ["node_modules"]
+    "exclude": ["node_modules", "src/core/DashboardServer.ts"]
 }

@@ -12,6 +12,7 @@ function read(relativePath) {
 test('open-source runtime does not ship the local dashboard server', () => {
     assert.equal(fs.existsSync(path.join(root, 'src/core/DashboardServer.ts')), false)
     assert.doesNotMatch(read('src/index.ts'), /DashboardServer|startDashboard|stopDashboard/)
+    assert.match(read('tsconfig.json'), /src\/core\/DashboardServer\.ts/)
 })
 
 test('public config no longer exposes dashboard host or write controls', () => {
