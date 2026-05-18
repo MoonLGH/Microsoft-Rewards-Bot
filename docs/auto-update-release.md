@@ -151,6 +151,8 @@ The updater must preserve user-owned files and folders:
 
 If new config keys are added, update the example files. The updater migrates missing keys from examples without replacing user values.
 
+Managed project paths are mirrored from the release archive before the copy step. This intentionally removes old source files that no longer exist in the release, while preserving the user-owned paths above.
+
 ## What Not To Do
 
 - Do not ship database tokens, API keys, private keys, or license backend secrets.

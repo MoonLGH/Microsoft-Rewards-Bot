@@ -47,6 +47,19 @@ const DEFAULT_OBSOLETE_PATHS = [
     'src/core/DashboardServer.ts'
 ]
 
+const DEFAULT_MANAGED_PATHS = [
+    'src',
+    'scripts',
+    'tests',
+    'docs',
+    'plugins/core',
+    'plugins/catalog.json',
+    'plugins/official-core.json',
+    'package.json',
+    'package-lock.json',
+    'tsconfig.json'
+]
+
 function canonicalJson(value) {
     if (Array.isArray(value)) {
         return `[${value.map(canonicalJson).join(',')}]`
@@ -160,6 +173,54 @@ function removeObsoletePaths(root, obsoletePaths, excludes) {
         if (!fs.existsSync(target)) continue
         rmrf(target)
         removeEmptyParents(path.dirname(target), root)
+    }
+}
+
+function pruneManagedPaths(sourceRoot, targetRoot, managedPaths, excludes) {
+    for (const managedPath of managedPaths) {
+        if (isExcluded(managedPath, excludes)) continue
+
+        const source = path.join(sourceRoot, managedPath)
+        const target = path.join(targetRoot, managedPath)
+        if (!fs.existsSync(target)) continue
+
+        if (!fs.existsSync(source)) {
+            rmrf(target)
+            removeEmptyParents(path.dirname(target), targetRoot)
+            continue
+        }
+
+        pruneManagedEntry(source, target, managedPath, excludes, targetRoot)
+    }
+}
+
+function pruneManagedEntry(source, target, relativePath, excludes, targetRoot) {
+    if (isExcluded(relativePath, excludes)) return
+    if (!fs.existsSync(target)) return
+
+    const sourceStat = fs.statSync(source)
+    const targetStat = fs.statSync(target)
+
+    if (sourceStat.isDirectory() !== targetStat.isDirectory()) {
+        rmrf(target)
+        return
+    }
+
+    if (!sourceStat.isDirectory()) return
+
+    for (const entry of fs.readdirSync(target)) {
+        const childRelative = pathToPosix(path.join(relativePath, entry))
+        if (isExcluded(childRelative, excludes)) continue
+
+        const childSource = path.join(source, entry)
+        const childTarget = path.join(target, entry)
+        if (!fs.existsSync(childSource)) {
+            rmrf(childTarget)
+            removeEmptyParents(path.dirname(childTarget), targetRoot)
+            continue
+        }
+
+        pruneManagedEntry(childSource, childTarget, childRelative, excludes, targetRoot)
     }
 }
 
@@ -371,6 +432,7 @@ class UpdateManager {
 
         try {
             this.backupMutablePaths(backupDir, excludes)
+            pruneManagedPaths(sourceRoot, this.root, manifest.managedPaths ?? DEFAULT_MANAGED_PATHS, excludes)
             removeObsoletePaths(this.root, manifest.obsoletePaths ?? DEFAULT_OBSOLETE_PATHS, excludes)
             copyReleaseTree(sourceRoot, this.root, excludes)
             migrateUserFiles(this.root, this.logger)
@@ -439,6 +501,7 @@ module.exports = {
     DEFAULT_EXCLUDES,
     DEFAULT_BACKUP_PATHS,
     DEFAULT_OBSOLETE_PATHS,
+    DEFAULT_MANAGED_PATHS,
     DEFAULT_PUBLIC_KEY,
     UpdateManager,
     canonicalJson,
