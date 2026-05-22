@@ -1,5 +1,7 @@
 # Troubleshooting
 
+Navigation: [Documentation index](./README.md) -> [Install and auto-updates](./updates.md) -> [Node.js version](./node-version.md) -> [Plugin system overview](./plugins.md)
+
 ## Auto-Update Fails
 
 The bot logs the update error and continues with the local version when the network or manifest is unavailable. It refuses to apply an update if the archive checksum is invalid.
@@ -53,3 +55,10 @@ npm run analyze:pages
 If it reports missing RSC data, missing `reportActivity`, or unknown activity models, Microsoft likely changed the dashboard payload or server action wiring.
 
 For dashboard-specific checks, use [Dashboard testing](./dashboard-testing.md). Start with `npm run analyze:pages`, then run `npm run test:dashboard:mock` if side panels or streak protection changed.
+
+## Related Pages
+
+- [Install and auto-updates](./updates.md)
+- [Node.js version](./node-version.md)
+- [Plugin system overview](./plugins.md)
+- [Official Core plugin](./core-plugin.md)

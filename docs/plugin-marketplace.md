@@ -1,5 +1,7 @@
 # Plugin Marketplace
 
+Navigation: [Documentation index](./README.md) -> [Plugin system overview](./plugins.md) -> [Create a plugin](./create-plugin.md) -> [Plugin API reference](./plugin-api.md)
+
 Run the local plugin manager with:
 
 ```bash
@@ -60,3 +62,10 @@ A distributable plugin should include:
 The Core plugin is preinstalled in `plugins/core`. Its bytecode checksum is pinned by `plugins/official-core.json`; if the bytecode does not match, the bot refuses to grant official premium entitlement.
 
 Third-party plugins cannot claim official Core entitlement. They use the public plugin API only.
+
+## Related Pages
+
+- [Plugin system overview](./plugins.md)
+- [Create a plugin](./create-plugin.md)
+- [Plugin API reference](./plugin-api.md)
+- [Official Core plugin](./core-plugin.md)

@@ -1,20 +1,55 @@
-# Documentation
+# Microsoft Rewards Bot Documentation
 
-Public documentation for the Microsoft Rewards Bot.
+Public documentation for Microsoft Rewards Bot.
+
+The README is the quick entry point. This folder is the full guide, split by task so you can jump directly to installation, plugins, Core, updates, or troubleshooting.
 
 ## Start Here
 
-- **[Install and update](./updates.md)** - how the auto-updater works on `npm start`
-- **[Auto-update release checklist](./auto-update-release.md)** - maintainer steps for publishing updates
-- **[Plugin system overview](./plugins.md)** - how the bot discovers plugins and how `plugins/plugins.jsonc` controls activation
-- **[Create a plugin](./create-plugin.md)** - quick guide for building your own plugin
-- **[Plugin API reference](./plugin-api.md)** - exact interfaces, hooks, and runtime contract
-- **[Plugin publishing](./plugin-marketplace.md)** - packaging, distribution, and marketplace guidance
-- **[Built-in scheduler](./scheduler.md)** - daily self-scheduling without cron or external services
-- **[Safety advisory](./safety-advisory.md)** - remote risk warnings with user override options
-- **[Official Core plugin](./core-plugin.md)** - public overview, benefits, and buying information
-- **[Core technical reference](./core-plugin-reference.md)** - coverage model, limits, security boundary, and release notes
-- **[Core Dashboard](./dashboard.md)** - official remote dashboard availability and security model
-- **[Node.js version](./node-version.md)** - required Node.js version for bytecode compatibility
-- **[Dashboard testing](./dashboard-testing.md)** - saved-page analysis, mocked side-panel tests, and opt-in live diagnostics
-- **[Troubleshooting](./troubleshooting.md)** - common launch, update, plugin, and dashboard issues
+| If you want to... | Go here |
+| --- | --- |
+| Install the bot manually or understand what happens on launch | [Install and auto-updates](./updates.md) |
+| Fix a Node.js version mismatch | [Node.js version](./node-version.md) |
+| Enable Core or a free optional plugin | [Plugin system overview](./plugins.md) |
+| Learn what Core adds before buying it | [Official Core plugin](./core-plugin.md) |
+| Open or understand the official dashboard | [Core Dashboard](./dashboard.md) |
+| Build your own public plugin | [Create a plugin](./create-plugin.md) |
+| Look up exact plugin interfaces | [Plugin API reference](./plugin-api.md) |
+| Package or publish a plugin | [Plugin publishing](./plugin-marketplace.md) |
+| Diagnose launch, update, Core, or dashboard problems | [Troubleshooting](./troubleshooting.md) |
+
+## Documentation Paths
+
+### Users
+
+- [Install and auto-updates](./updates.md)
+- [Node.js version](./node-version.md)
+- [Built-in scheduler](./scheduler.md)
+- [Troubleshooting](./troubleshooting.md)
+
+### Plugins
+
+- [Plugin system overview](./plugins.md)
+- [Create a plugin](./create-plugin.md)
+- [Plugin API reference](./plugin-api.md)
+- [Plugin publishing](./plugin-marketplace.md)
+
+### Official Core
+
+- [Official Core plugin](./core-plugin.md)
+- [Core technical reference](./core-plugin-reference.md)
+- [Core Dashboard](./dashboard.md)
+- [Dashboard testing](./dashboard-testing.md)
+
+### Maintainers
+
+- [Auto-update release checklist](./auto-update-release.md)
+- [Safety advisory](./safety-advisory.md)
+- [Selectors reference](./selectors-reference.md)
+
+## Recommended Reading Order
+
+1. [Install and auto-updates](./updates.md)
+2. [Plugin system overview](./plugins.md)
+3. [Official Core plugin](./core-plugin.md)
+4. [Troubleshooting](./troubleshooting.md)

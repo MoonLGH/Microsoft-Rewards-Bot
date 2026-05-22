@@ -1,5 +1,7 @@
 # Plugin System Overview
 
+Navigation: [Documentation index](./README.md) -> [Create a plugin](./create-plugin.md) -> [Plugin API reference](./plugin-api.md) -> [Official Core plugin](./core-plugin.md)
+
 The bot loads plugins from the `plugins/` directory at startup.
 
 When `plugins/plugins.jsonc` exists, it decides which plugins are active:
@@ -33,6 +35,23 @@ The open-source release can ship optional free plugins beside Core. These plugin
 
 Enable one in `plugins/plugins.jsonc` or through the local Plugin Desk.
 
+### Example Activation
+
+```jsonc
+{
+  "run-summary": {
+    "enabled": true,
+    "priority": 10,
+    "config": {
+      "includeEmails": false,
+      "writeMarkdown": true
+    }
+  }
+}
+```
+
+The plugin writes local diagnostics only. It does not send account data to a remote service.
+
 ## Managing Plugins
 
 Run:
@@ -47,3 +66,5 @@ The local Plugin Desk edits `plugins/plugins.jsonc`, verifies checksums against 
 
 - Read the [Plugin API reference](./plugin-api.md) for exact interfaces and lifecycle hooks.
 - Read [Create a plugin](./create-plugin.md) for a small end-to-end example.
+- Read [Plugin publishing](./plugin-marketplace.md) if you want to distribute a plugin.
+- Read [Official Core plugin](./core-plugin.md) to understand how the paid Core plugin differs from public plugins.

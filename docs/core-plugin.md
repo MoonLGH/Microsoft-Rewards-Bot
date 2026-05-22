@@ -1,5 +1,7 @@
 # Official Core Plugin
 
+Navigation: [Documentation index](./README.md) -> [Plugin system overview](./plugins.md) -> [Core technical reference](./core-plugin-reference.md) -> [Core Dashboard](./dashboard.md)
+
 Core is the optional premium plugin for Microsoft Rewards Bot.
 
 The open-source edition already handles the essential workflow. Core adds the maintained premium layer for users who want broader Rewards coverage, more automation, and access to the official web dashboard.
@@ -63,3 +65,9 @@ After payment, you receive a license key. Enable the preinstalled Core plugin in
 ## Learn More
 
 For technical behavior, supported surface details, security boundaries, and maintainer notes, read [Core technical reference](./core-plugin-reference.md).
+
+Related pages:
+
+- [Plugin system overview](./plugins.md) explains how to enable Core in `plugins/plugins.jsonc`.
+- [Core Dashboard](./dashboard.md) explains the official remote dashboard.
+- [Node.js version](./node-version.md) explains why Core requires an exact Node.js version.

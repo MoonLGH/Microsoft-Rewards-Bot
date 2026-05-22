@@ -51,11 +51,32 @@ $f="$env:TEMP\install.exe"; iwr https://github.com/QuestPilot/Microsoft-Rewards-
 For total control, clone and install manually via NPM:
 
 ```bash
-git clone https://github.com/QuestPilot/Microsoft-Rewards-Bot.git
+git clone --branch release https://github.com/QuestPilot/Microsoft-Rewards-Bot.git
 cd Microsoft-Rewards-Bot
 npm install
 npm start
 ```
+
+The `release` branch is the supported public channel. It matches the auto-update manifest and the compiled official Core plugin compatibility target.
+
+---
+
+## 📚 Documentation Map
+
+Use this README as the front door, then jump into the page that matches what you want to do next:
+
+| Goal | Read this |
+| --- | --- |
+| Install, update, or understand `npm start` | [Install and auto-updates](docs/updates.md) |
+| Use the correct Node.js version | [Node.js version](docs/node-version.md) |
+| Enable, disable, or inspect plugins | [Plugin system overview](docs/plugins.md) |
+| Build a public plugin | [Create a plugin](docs/create-plugin.md) and [Plugin API reference](docs/plugin-api.md) |
+| Understand the premium plugin | [Official Core plugin](docs/core-plugin.md) |
+| Understand Core limits and security | [Core technical reference](docs/core-plugin-reference.md) |
+| Use the official web dashboard | [Core Dashboard](docs/dashboard.md) |
+| Fix common launch or update issues | [Troubleshooting](docs/troubleshooting.md) |
+
+Start with [docs/README.md](docs/README.md) if you want the full documentation index.
 
 <br>
 

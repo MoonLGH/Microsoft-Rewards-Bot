@@ -1,5 +1,7 @@
 # Node.js Version
 
+Navigation: [Documentation index](./README.md) -> [Install and auto-updates](./updates.md) -> [Troubleshooting](./troubleshooting.md)
+
 Use **Node.js 24.15.0**.
 
 The accepted version is:
@@ -29,6 +31,18 @@ npm start
 The official Core plugin is distributed as V8 bytecode through `bytenode`. Bytecode is tied to Node.js/V8 compatibility. Running it on another Node.js version can fail at runtime or behave unpredictably.
 
 For this reason, the official release refuses every Node.js version except 24.15.0 before loading the bot.
+
+## Common Fix on Windows
+
+If `npm start` reports another version, install Node.js 24.15.0 globally, then open a new PowerShell window:
+
+```powershell
+node -v
+npm install
+npm start
+```
+
+If Windows still reports the old version, check that `C:\Program Files\nodejs` is first in your Node path and remove the newer Node.js installation from Windows Apps or Programs and Features.
 
 ## Security Note
 

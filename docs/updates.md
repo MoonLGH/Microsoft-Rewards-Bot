@@ -1,5 +1,7 @@
 # Auto-Updates
 
+Navigation: [Documentation index](./README.md) -> [Node.js version](./node-version.md) -> [Troubleshooting](./troubleshooting.md)
+
 `npm start` checks for updates before building and launching the bot.
 
 `npm run dev` and any launch using `-dev` always skip auto-update, so local development is not overwritten by the public release branch.
@@ -61,3 +63,22 @@ npm run update:prepare
 Set `MSRB_UPDATE_CHANNEL=beta` to use another channel. Set `MSRB_UPDATE_MANIFEST_URL` for a custom manifest URL. Set `MSRB_AUTO_UPDATE=0` only for CI or emergency local recovery.
 
 `update:doctor` compares the package version, local manifest, remote manifest, and Core checksums. Use it when users do not see a release; if the remote manifest still shows the old version, the update has not been published yet.
+
+## Manual Install from Git
+
+Use the supported public branch:
+
+```bash
+git clone --branch release https://github.com/QuestPilot/Microsoft-Rewards-Bot.git
+cd Microsoft-Rewards-Bot
+npm install
+npm start
+```
+
+The `release` branch is the same channel used by the stable update manifest. Cloning the default branch can install development files that do not match the public updater or compiled Core bytecode.
+
+## Next Steps
+
+- If Node.js is rejected, read [Node.js version](./node-version.md).
+- If the update check fails or stops early, read [Troubleshooting](./troubleshooting.md).
+- If you are publishing a release, follow [Auto-update release checklist](./auto-update-release.md).

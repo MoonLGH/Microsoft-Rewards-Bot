@@ -1,5 +1,7 @@
 # Plugin API Reference
 
+Navigation: [Documentation index](./README.md) -> [Plugin system overview](./plugins.md) -> [Create a plugin](./create-plugin.md) -> [Plugin publishing](./plugin-marketplace.md)
+
 This page documents the public third-party plugin contract. Import it from:
 
 ```ts
@@ -127,3 +129,10 @@ export default class SummaryPlugin implements IPlugin {
 ## Security Model
 
 Plugins are local code and should be installed only from trusted sources. The marketplace checks metadata and checksums, but it is not a sandbox. Paid or proprietary plugins must clearly document their own license and support channel.
+
+Related pages:
+
+- [Plugin system overview](./plugins.md) for activation and load order.
+- [Create a plugin](./create-plugin.md) for a minimal working example.
+- [Plugin publishing](./plugin-marketplace.md) for catalog metadata.
+- [Official Core plugin](./core-plugin.md) for the premium plugin boundary.

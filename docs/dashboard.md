@@ -1,5 +1,7 @@
 # Core Dashboard
 
+Navigation: [Documentation index](./README.md) -> [Official Core plugin](./core-plugin.md) -> [Core technical reference](./core-plugin-reference.md) -> [Troubleshooting](./troubleshooting.md)
+
 The web dashboard is an official Core feature. It is not part of the open-source runtime and it does not open a local network port.
 
 When the official Core plugin is enabled and the license is valid, Core starts a private outbound connection to the official dashboard service. Users open the dashboard from the official domain, enter their Core license key, then complete Discord OAuth.
@@ -48,3 +50,10 @@ V1 exposes only safe controls:
 - `Stop safely`: asks a scheduled bot to stop after the current run finishes.
 
 The dashboard does not edit accounts, passwords, cookies, proxy settings, tokens, or the full local config.
+
+## Related Pages
+
+- [Official Core plugin](./core-plugin.md) for purchase and enablement.
+- [Core technical reference](./core-plugin-reference.md) for coverage and security boundaries.
+- [Dashboard testing](./dashboard-testing.md) for maintainer diagnostics.
+- [Troubleshooting](./troubleshooting.md) if a machine does not appear.
