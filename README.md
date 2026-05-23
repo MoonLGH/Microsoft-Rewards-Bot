@@ -28,6 +28,10 @@ This ecosystem proudly features:
 - 🔄 **Smart Auto-Updates**: Stays fresh and up to date on every `npm start`.
 - 💎 **Premium Core Plugin**: Proprietary logic enabled via `plugins/plugins.jsonc`.
 
+Remote Dash
+<img width="2309" height="1189" alt="image" src="https://github.com/user-attachments/assets/1ac4e0c6-0df9-44c3-956a-3a500ab24c69" />
+
+
 ---
 
 ## 🚀 Installation (Windows)
