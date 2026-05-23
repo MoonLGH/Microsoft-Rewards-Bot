@@ -2,8 +2,8 @@ import chalk from 'chalk'
 import cluster from 'cluster'
 import { errorDiagnostic } from '../helpers/ErrorDiagnostic'
 import type { MicrosoftRewardsBot } from '../index'
-import type { DashboardPlatform } from '../types/Dashboard'
 import type { LogFilter } from '../types/Config'
+import type { DashboardPlatform } from '../types/Dashboard'
 import { sendDiscord } from './DiscordWebhook'
 import { sendNtfy } from './NtfyWebhook'
 
@@ -95,7 +95,9 @@ export class LogService {
         })
 
         const badge = platformBadge(isMobile)
-        const consoleStr = `[${now}] [${userName}] [${levelTag}] ${badge} [${title}] ${formatted}`
+        const rewardsTag = chalk.cyan(chalk.bold(' REWARDS '))
+        const sep = chalk.blue('│')
+        const consoleStr = `${rewardsTag} ${sep} [${now}] ${sep} ${chalk.white(userName)} ${sep} [${levelTag}] ${badge} [${title}] ${formatted}`
 
         let logColor: ColorKey | undefined = color
 
