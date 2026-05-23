@@ -1,6 +1,6 @@
 import cluster, { Worker } from 'cluster'
-import readline from 'readline'
 import type { BrowserContext, Cookie, Page } from 'patchright'
+import readline from 'readline'
 import pkg from '../package.json'
 
 import type { BrowserFingerprintWithHeaders } from 'fingerprint-generator'
@@ -24,13 +24,21 @@ import type { DashboardInfo } from './core/InternalPluginAPI'
 import { PluginManager } from './core/PluginManager'
 import { checkSafetyAdvisory } from './core/SafetyAdvisory'
 import { formatScheduledRun, getNextScheduledRun, isSchedulerEnabled, waitUntil } from './core/Scheduler'
+import {
+    ACCOUNT_SAFETY_WARNING_THRESHOLD,
+    clearAccountSafetyWarningState,
+    createAccountSafetyWarningState,
+    isAccountSafetyWarningSuppressed,
+    readAccountSafetyWarningState,
+    writeAccountSafetyWarningState
+} from './helpers/AccountSafetyWarning'
 import HttpClient from './helpers/HttpClient'
 import { flushDiscordQueue, sendDiscord } from './notifications/DiscordWebhook'
 import { flushNtfyQueue, sendNtfy } from './notifications/NtfyWebhook'
 import type { Account } from './types/Account'
 import type { AppDashboardData } from './types/AppDashboardData'
-import type { DashboardData } from './types/DashboardData'
 import type { DashboardLog } from './types/Dashboard'
+import type { DashboardData } from './types/DashboardData'
 
 interface BrowserSession {
     context: BrowserContext
@@ -183,7 +191,13 @@ export class MicrosoftRewardsBot {
     }
 
     private async warnIfTooManyAccounts(): Promise<void> {
-        if (this.accounts.length <= 4 || cluster.isWorker) return
+        if (this.accounts.length <= ACCOUNT_SAFETY_WARNING_THRESHOLD || cluster.isWorker) return
+
+        const storedWarningState = await readAccountSafetyWarningState()
+        if (isAccountSafetyWarningSuppressed(storedWarningState)) return
+        if (storedWarningState) {
+            await clearAccountSafetyWarningState().catch(() => {})
+        }
 
         this.logger.warn(
             'main',
@@ -191,18 +205,75 @@ export class MicrosoftRewardsBot {
             `You have configured ${this.accounts.length} accounts. Running more than 4 accounts is strongly discouraged and may increase account risk.`
         )
 
+        const schedulerEnabled = isSchedulerEnabled(this.config.scheduler)
+
         if (!process.stdin.isTTY) {
+            if (schedulerEnabled) {
+                try {
+                    await writeAccountSafetyWarningState(createAccountSafetyWarningState(new Date(), 'permanent'))
+                    this.logger.warn(
+                        'main',
+                        'ACCOUNT-SAFETY',
+                        'Scheduler is enabled. This warning will stay hidden on future runs.'
+                    )
+                } catch (error) {
+                    this.logger.warn(
+                        'main',
+                        'ACCOUNT-SAFETY',
+                        `Could not save warning suppression state: ${error instanceof Error ? error.message : String(error)}`
+                    )
+                }
+            }
+
             this.logger.warn('main', 'ACCOUNT-SAFETY', 'Continuing in non-interactive mode.')
             return
         }
 
-        await new Promise<void>(resolve => {
+        const shouldDismiss = await this.promptAccountSafetyWarning(schedulerEnabled)
+        if (!shouldDismiss) return
+
+        try {
+            await writeAccountSafetyWarningState(
+                createAccountSafetyWarningState(new Date(), schedulerEnabled ? 'permanent' : 'temporary')
+            )
+        } catch (error) {
+            this.logger.warn(
+                'main',
+                'ACCOUNT-SAFETY',
+                `Could not save warning suppression state: ${error instanceof Error ? error.message : String(error)}`
+            )
+            return
+        }
+
+        this.logger.warn(
+            'main',
+            'ACCOUNT-SAFETY',
+            schedulerEnabled
+                ? 'This warning will stay hidden while the scheduler is enabled.'
+                : 'This warning will stay hidden for 30 days.'
+        )
+    }
+
+    private async promptAccountSafetyWarning(schedulerEnabled: boolean): Promise<boolean> {
+        const prompt = schedulerEnabled
+            ? 'Type "don\'t show again" to hide this warning permanently while the scheduler is enabled, or press Enter to continue once. '
+            : 'Type "don\'t show again" to hide this warning for 30 days, or press Enter to continue once. '
+
+        const answer = await new Promise<string>(resolve => {
             const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-            rl.question('Press Enter to continue at your own risk, or press Ctrl+C to stop. ', () => {
+            rl.question(prompt, value => {
                 rl.close()
-                resolve()
+                resolve(value)
             })
         })
+
+        const normalizedAnswer = this.utils.normalizeString(answer).replace(/\s+/g, ' ')
+        return (
+            normalizedAnswer === 'dont show again' ||
+            normalizedAnswer === 'do not show again' ||
+            normalizedAnswer === 'no longer show' ||
+            normalizedAnswer === 'never show again'
+        )
     }
 
     private runMaster(runStartTime: number): Promise<number> {
@@ -480,7 +551,11 @@ export class MicrosoftRewardsBot {
                         )
                     }
                 } else {
-                    this.logger.debug('main', 'GET-APP-TOKEN', 'Skipping mobile access token: no app-only workers enabled')
+                    this.logger.debug(
+                        'main',
+                        'GET-APP-TOKEN',
+                        'Skipping mobile access token: no app-only workers enabled'
+                    )
                 }
 
                 this.cookies.mobile = await initialContext.cookies()
@@ -625,7 +700,7 @@ async function main(): Promise<void> {
     console.log('\x1b[36m') // Cyan color
     console.log('  ____                            _       ____        _   ')
     console.log(' |  _ \\ _____      ____ _ _ __ __| |___  | __ )  ___ | |_ ')
-    console.log(' | |_) / _ \\ \\ /\\ / / _` | \'__/ _` / __| |  _ \\ / _ \\| __|')
+    console.log(" | |_) / _ \\ \\ /\\ / / _` | '__/ _` / __| |  _ \\ / _ \\| __|")
     console.log(' |  _ <  __/\\ V  V / (_| | | | (_| \\__ \\ | |_) | (_) | |_ ')
     console.log(' |_| \\_\\___| \\_/\\_/ \\__,_|_|  \\__,_|___/ |____/ \\___/ \\__|')
     console.log('\x1b[0m') // Reset color
@@ -715,7 +790,11 @@ async function runScheduled(rewardsBot: MicrosoftRewardsBot): Promise<number> {
             const exitCode = await runSingle(rewardsBot)
             if (exitCode !== 0) return exitCode
             if (rewardsBot.dashboardStopRequested) {
-                rewardsBot.logger.info('main', 'SCHEDULER', 'Remote stop requested. Scheduler will stop after the current run.')
+                rewardsBot.logger.info(
+                    'main',
+                    'SCHEDULER',
+                    'Remote stop requested. Scheduler will stop after the current run.'
+                )
                 return 0
             }
         }

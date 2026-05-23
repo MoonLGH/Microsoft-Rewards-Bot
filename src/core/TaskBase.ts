@@ -34,7 +34,7 @@ export class TaskBase {
             this.bot.logger.warn(
                 this.bot.isMobile,
                 'DAILY-SET',
-                `Free tier: Limited to ${maxQuests} quests (${activitiesUncompleted.length} available). Upgrade for unlimited.`
+                `Open-source mode: solving ${maxQuests} of ${activitiesUncompleted.length} Daily Set items. Core unlocks full Daily Set coverage.`
             )
             activitiesUncompleted = activitiesUncompleted.slice(0, maxQuests)
         }

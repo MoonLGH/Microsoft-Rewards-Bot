@@ -25,6 +25,7 @@ import type { StreakProtectionSyncResult } from './tasks/browser/StreakProtectio
 export default class ActivityRunner {
     private bot: MicrosoftRewardsBot
     private premiumTasks: Partial<PremiumTaskMap> = {}
+    private premiumHintsShown = new Set<string>()
 
     constructor(bot: MicrosoftRewardsBot) {
         this.bot = bot
@@ -75,35 +76,35 @@ export default class ActivityRunner {
         if (this.premiumTasks.doDoubleSearchPoints) {
             return this.premiumTasks.doDoubleSearchPoints(promotion)
         }
-        this.bot.logger.warn('main', 'PLUGIN', 'Premium plugin required for DoubleSearchPoints — skipping')
+        this.coreHint('Double Search Points', 'Core can activate eligible double-search promotions when Microsoft offers them.')
     }
 
     doAppReward = async (promotion: Promotion): Promise<void> => {
         if (this.premiumTasks.doAppReward) {
             return this.premiumTasks.doAppReward(promotion)
         }
-        this.bot.logger.warn('main', 'PLUGIN', 'Premium plugin required for AppReward — skipping')
+        this.coreHint('App Rewards', 'Core adds mobile app rewards such as Daily Check-In and Read to Earn.')
     }
 
     doReadToEarn = async (): Promise<void> => {
         if (this.premiumTasks.doReadToEarn) {
             return this.premiumTasks.doReadToEarn()
         }
-        this.bot.logger.warn('main', 'PLUGIN', 'Premium plugin required for ReadToEarn — skipping')
+        this.coreHint('Read to Earn', 'Core can complete supported app-only reading rewards.')
     }
 
     doDailyCheckIn = async (): Promise<void> => {
         if (this.premiumTasks.doDailyCheckIn) {
             return this.premiumTasks.doDailyCheckIn()
         }
-        this.bot.logger.warn('main', 'PLUGIN', 'Premium plugin required for DailyCheckIn — skipping')
+        this.coreHint('Daily Check-In', 'Core can handle supported app-only daily check-ins.')
     }
 
     doDailyStreak = async (page: Page): Promise<DailyStreakInfo | null> => {
         if (this.premiumTasks.doDailyStreak) {
             return this.premiumTasks.doDailyStreak(page)
         }
-        this.bot.logger.warn('main', 'PLUGIN', 'Premium plugin required for DailyStreak — skipping')
+        this.coreHint('Daily Streak', 'Core can read streak details and sync streak protection from the Rewards dashboard.')
         return null
     }
 
@@ -111,14 +112,14 @@ export default class ActivityRunner {
         if (this.premiumTasks.doRedeemGoal) {
             return this.premiumTasks.doRedeemGoal(page, config)
         }
-        this.bot.logger.warn('main', 'PLUGIN', 'Premium plugin required for RedeemGoal — skipping')
+        this.coreHint('Redeem Goal', 'Core can manage supported redeem-goal dashboard actions.')
     }
 
     collectDashboardInfo = async (page: Page): Promise<DashboardInfo> => {
         if (this.premiumTasks.collectDashboardInfo) {
             return this.premiumTasks.collectDashboardInfo(page)
         }
-        this.bot.logger.warn('main', 'PLUGIN', 'Premium plugin required for DashboardInfo — skipping')
+        this.coreHint('Dashboard Info', 'Core adds richer dashboard snapshots, ready-to-claim cards, streak details, and remote dashboard data.')
         return {
             userName: null,
             level: null,
@@ -135,7 +136,7 @@ export default class ActivityRunner {
         if (this.premiumTasks.doClaimPoints) {
             return this.premiumTasks.doClaimPoints(page)
         }
-        this.bot.logger.warn('main', 'PLUGIN', 'Premium plugin required for ClaimPoints — skipping')
+        this.coreHint('Claim Points', 'Core can claim supported ready-to-claim point cards automatically.')
         return { claimed: false, pointsClaimed: 0, entries: [] }
     }
 
@@ -143,7 +144,7 @@ export default class ActivityRunner {
         if (this.premiumTasks.doTemporaryPunchcards) {
             return this.premiumTasks.doTemporaryPunchcards(page)
         }
-        this.bot.logger.warn('main', 'PLUGIN', 'Premium plugin required for TemporaryPunchcards — skipping')
+        this.coreHint('Temporary Punchcards', 'Core can attempt supported temporary dashboard punchcards when they appear.')
         return { visited: 0, completedSteps: 0, skippedSteps: 0 }
     }
 
@@ -154,5 +155,19 @@ export default class ActivityRunner {
 
         const gate = new StreakProtectionGate(this.bot)
         return gate.sync(page, desiredEnabled)
+    }
+
+    private coreHint(feature: string, detail: string): void {
+        if (this.premiumHintsShown.has(feature)) {
+            this.bot.logger.warn('main', 'CORE-OPTIONAL', `${feature} requires Core — skipping.`)
+            return
+        }
+
+        this.premiumHintsShown.add(feature)
+        this.bot.logger.warn(
+            'main',
+            'CORE-OPTIONAL',
+            `${feature} requires Core — skipping. ${detail} Learn more: https://github.com/QuestPilot/Microsoft-Rewards-Bot/blob/release/docs/core-plugin.md`
+        )
     }
 }

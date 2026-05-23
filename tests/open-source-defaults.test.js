@@ -16,3 +16,13 @@ test('public example config starts with Core-only workers disabled', () => {
     assert.equal(config.workers.doDashboardInfo, false)
     assert.equal(config.workers.doClaimPoints, false)
 })
+
+test('open-source premium fallbacks show concise Core hints', () => {
+    const runner = fs.readFileSync(path.join(root, 'src/core/ActivityRunner.ts'), 'utf8')
+    const taskBase = fs.readFileSync(path.join(root, 'src/core/TaskBase.ts'), 'utf8')
+
+    assert.match(runner, /CORE-OPTIONAL/)
+    assert.match(runner, /Learn more: https:\/\/github\.com\/QuestPilot\/Microsoft-Rewards-Bot\/blob\/release\/docs\/core-plugin\.md/)
+    assert.match(runner, /premiumHintsShown/)
+    assert.match(taskBase, /Core unlocks full Daily Set coverage/)
+})
