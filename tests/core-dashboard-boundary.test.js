@@ -27,3 +27,20 @@ test('public docs describe dashboard as Core-only', () => {
     assert.match(docs, /Local HTTP dashboard \| No \| No/)
     assert.doesNotMatch(read('README.md'), /local dashboard/i)
 })
+
+test('public Core plugin does not ship local license admin tooling', () => {
+    const coreDir = path.join(root, 'plugins/core')
+    const forbiddenFiles = [
+        'license-admin.html',
+        'license-admin-server.js',
+        'license-admin.config.example.js',
+        'license-admin.config.local.js',
+        'start-license-admin.bat',
+    ]
+
+    for (const file of forbiddenFiles) {
+        assert.equal(fs.existsSync(path.join(coreDir, file)), false, `${file} should not ship in plugins/core`)
+    }
+
+    assert.doesNotMatch(read('plugins/core/package.json'), /license-admin|MSRB_LICENSE_ADMIN_CONFIG|TURSO_PLATFORM_TOKEN/)
+})
