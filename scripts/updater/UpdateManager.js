@@ -8,7 +8,6 @@ const { migrateUserFiles } = require('./ConfigMigrator')
 
 const DEFAULT_REPO = 'QuestPilot/Microsoft-Rewards-Bot'
 const DEFAULT_BRANCH = 'release'
-const DEFAULT_PUBLIC_KEY = ''
 
 const DEFAULT_EXCLUDES = [
     '.git',
@@ -74,25 +73,6 @@ const DEFAULT_MANAGED_PATHS = [
 const DEFAULT_OBSOLETE_PATHS = [
     'src/core/DashboardServer.ts'
 ]
-
-function canonicalJson(value) {
-    if (Array.isArray(value)) {
-        return `[${value.map(canonicalJson).join(',')}]`
-    }
-    if (value && typeof value === 'object') {
-        return `{${Object.keys(value)
-            .sort()
-            .map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
-            .join(',')}}`
-    }
-    return JSON.stringify(value)
-}
-
-function stripSignature(manifest) {
-    const clone = { ...manifest }
-    delete clone.signature
-    return clone
-}
 
 function pathToPosix(relativePath) {
     return relativePath.replace(/\\/g, '/')
@@ -546,15 +526,12 @@ module.exports = {
     DEFAULT_EXCLUDES,
     DEFAULT_MANAGED_PATHS,
     DEFAULT_OBSOLETE_PATHS,
-    DEFAULT_PUBLIC_KEY,
     DEFAULT_REPO,
     UpdateManager,
-    canonicalJson,
     copyReleaseTree,
     download,
     findExtractedRoot,
     isExcluded,
     pruneManagedPaths,
-    requestJson,
-    stripSignature
+    requestJson
 }
