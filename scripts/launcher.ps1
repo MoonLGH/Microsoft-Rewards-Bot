@@ -16,7 +16,7 @@ $desktopShortcut = Join-Path $desktop 'Microsoft Bot.lnk'
 $legacyDesktopShortcut = Join-Path $desktop 'MSN Bot.lnk'
 
 $appdata = if ($env:APPDATA) { $env:APPDATA } else { Join-Path $userProfile 'AppData\Roaming' }
-$startMenuShortcutDir = Join-Path $appdata 'Microsoft\Windows\Start Menu\Programs\Microsoft Bot'
+$startMenuShortcutDir = Join-Path $appdata 'Microsoft\Windows\Start Menu\Programs'
 $startMenuShortcut = Join-Path $startMenuShortcutDir 'Microsoft Bot.lnk'
 $legacyStartMenuShortcutDir = Join-Path $appdata 'Microsoft\Windows\Start Menu\Programs\MSN Bot'
 $legacyStartMenuShortcut = Join-Path $legacyStartMenuShortcutDir 'MSN Bot.lnk'
@@ -28,6 +28,31 @@ $zipUrl = 'https://github.com/QuestPilot/Microsoft-Rewards-Bot/archive/refs/head
 $autoStartTaskName = 'Microsoft Rewards Bot Core Agent'
 $reinstallStateDir = Join-Path $env:TEMP 'msn-bot-reinstall'
 $reinstallStateFile = Join-Path $reinstallStateDir 'state.json'
+
+# Self-update check
+if ($Mode -eq 'menu') {
+    $rawUrl = 'https://raw.githubusercontent.com/QuestPilot/Microsoft-Rewards-Bot/main/scripts/launcher.ps1'
+    $tempFile = Join-Path $env:TEMP 'launcher_update.ps1'
+    try {
+        $oldEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Stop'
+        Invoke-WebRequest -Uri $rawUrl -OutFile $tempFile -UseBasicParsing -TimeoutSec 5
+        if (Test-Path $tempFile) {
+            $newHash = (Get-FileHash $tempFile).Hash
+            $oldHash = (Get-FileHash $PSCommandPath).Hash
+            if ($newHash -ne $oldHash) {
+                Copy-Item $tempFile $PSCommandPath -Force
+                Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+                exit
+            }
+        }
+    } catch {
+        # Ignore update check failures
+    } finally {
+        $ErrorActionPreference = $oldEAP
+        Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+    }
+}
 
 function Test-Administrator {
     $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -272,30 +297,133 @@ function Install-Dependencies {
     }
 }
 
+function Initialize-PSTBPinTaskBarType {
+    $code = @"
+    using System;
+    using System.Runtime.InteropServices;
+    
+    namespace PSTBPin
+    {
+        public static class TaskBar
+        {
+            [DllImport("shell32.dll", ExactSpelling = true)]
+            public static extern void ILFree(IntPtr pidlList);
+            [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+            public static extern IntPtr ILCreateFromPathW(string pszPath);
+    
+            [ComImport()]
+            [Guid("0DD79AE2-D156-45D4-9EEB-3B549769E940")]
+            [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+            private interface IPinnedList3
+            {
+                [PreserveSig] void Dummy1();
+                [PreserveSig] void Dummy2();
+                [PreserveSig] void Dummy3();
+                [PreserveSig] void Dummy4();
+                [PreserveSig] void Dummy5();
+                [PreserveSig] void Dummy6();
+                [PreserveSig] void Dummy7();
+                [PreserveSig] void Dummy8();
+                [PreserveSig] void Dummy9();
+                [PreserveSig] void Dummy10();
+                [PreserveSig] void Dummy11();
+                [PreserveSig] void Dummy12();
+                [PreserveSig] void Dummy13();
+                [PreserveSig] uint Modify(IntPtr pidlFrom, IntPtr pidlTo, uint caller);
+            }
+    
+            [ComImport()]
+            [Guid("90AA3A4E-1CBA-4233-B8BB-535773D48449")]
+            [ClassInterface(ClassInterfaceType.None)]
+            private class TaskbandPin
+            {
+            }
+    
+            private static readonly IPinnedList3 _taskbar = new TaskbandPin() as IPinnedList3;
+    
+            public static bool Pin(string filePath)
+            {
+                bool ret = false;
+                var pil = ILCreateFromPathW(filePath);
+                ret = (_taskbar.Modify(IntPtr.Zero, pil, 4) == 0);
+                if (pil != IntPtr.Zero)
+                {
+                    ILFree(pil);
+                }
+                return ret;
+            }
+    
+            public static bool Unpin(string filePath)
+            {
+                bool ret = false;
+                var pil = ILCreateFromPathW(filePath);
+                ret = (_taskbar.Modify(pil, IntPtr.Zero, 4) == 0);
+                if (pil != IntPtr.Zero)
+                {
+                    ILFree(pil);
+                }
+                return ret;
+            }
+        }
+    }
+"@
+    try {
+        Add-Type -TypeDefinition $code
+    } catch {
+        # Type might already be loaded in this session
+    }
+}
+
+function Add-TaskbarPin([string]$FilePath) {
+    Initialize-PSTBPinTaskBarType
+    try {
+        [PSTBPin.TaskBar]::Pin($FilePath) | Out-Null
+    } catch {}
+}
+
+function Remove-TaskbarPin([string]$FilePath) {
+    Initialize-PSTBPinTaskBarType
+    try {
+        [PSTBPin.TaskBar]::Unpin($FilePath) | Out-Null
+    } catch {}
+}
+
 function Create-ApplicationShortcuts {
     New-Item -ItemType Directory -Path $startMenuShortcutDir -Force | Out-Null
     $shell = New-Object -ComObject WScript.Shell
 
     Remove-ApplicationShortcuts
 
-    $shortcutCmd = '-NoProfile -ExecutionPolicy Bypass -Command "$f=Join-Path $env:TEMP ''launcher.ps1''; iwr ''https://raw.githubusercontent.com/QuestPilot/Microsoft-Rewards-Bot/main/scripts/launcher.ps1'' -OutFile $f -UseBasicParsing; & $f"'
+    $shortcutArgs = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $launcherScript
 
     $shortcut = $shell.CreateShortcut($desktopShortcut)
     $shortcut.TargetPath = 'powershell.exe'
-    $shortcut.Arguments = $shortcutCmd
+    $shortcut.Arguments = $shortcutArgs
     $shortcut.WorkingDirectory = $projectDir
     $shortcut.IconLocation = '{0},0' -f $iconFile
     $shortcut.Save()
 
     $startMenu = $shell.CreateShortcut($startMenuShortcut)
     $startMenu.TargetPath = 'powershell.exe'
-    $startMenu.Arguments = $shortcutCmd
+    $startMenu.Arguments = $shortcutArgs
     $startMenu.WorkingDirectory = $projectDir
     $startMenu.IconLocation = '{0},0' -f $iconFile
     $startMenu.Save()
+
+    # Pin to taskbar
+    if (Test-Path $startMenuShortcut) {
+        Add-TaskbarPin -FilePath $startMenuShortcut
+    }
 }
 
 function Remove-ApplicationShortcuts {
+    if (Test-Path $startMenuShortcut) {
+        Remove-TaskbarPin -FilePath $startMenuShortcut
+    }
+    if (Test-Path $desktopShortcut) {
+        Remove-TaskbarPin -FilePath $desktopShortcut
+    }
+
     if (Test-Path $desktopShortcut) {
         Remove-Item $desktopShortcut -Force
     }
@@ -322,14 +450,27 @@ function Ensure-StartMenuShortcut {
         New-Item -ItemType Directory -Path $startMenuShortcutDir -Force | Out-Null
         $shell = New-Object -ComObject WScript.Shell
         
-        $shortcutCmd = '-NoProfile -ExecutionPolicy Bypass -Command "$f=Join-Path $env:TEMP ''launcher.ps1''; iwr ''https://raw.githubusercontent.com/QuestPilot/Microsoft-Rewards-Bot/main/scripts/launcher.ps1'' -OutFile $f -UseBasicParsing; & $f"'
+        $shortcutArgs = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $launcherScript
         
         $startMenu = $shell.CreateShortcut($startMenuShortcut)
         $startMenu.TargetPath = 'powershell.exe'
-        $startMenu.Arguments = $shortcutCmd
+        $startMenu.Arguments = $shortcutArgs
         $startMenu.WorkingDirectory = $projectDir
         $startMenu.IconLocation = '{0},0' -f $iconFile
         $startMenu.Save()
+    }
+}
+
+function Ensure-TaskbarShortcut {
+    $ErrorActionPreference = 'SilentlyContinue'
+    $taskbarShortcutDir = Join-Path $appdata 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'
+    $taskbarShortcut = Join-Path $taskbarShortcutDir 'Microsoft Bot.lnk'
+    if (-not (Test-Path $taskbarShortcut)) {
+        if (Test-Path $startMenuShortcut) {
+            Add-TaskbarPin -FilePath $startMenuShortcut
+        } elseif (Test-Path $desktopShortcut) {
+            Add-TaskbarPin -FilePath $desktopShortcut
+        }
     }
 }
 
@@ -408,7 +549,7 @@ function Show-Header([string]$Title, [string]$Subtitle = '') {
 function Show-Menu {
     $descriptions_main = @(
         'Launch the bot in an interactive command window to watch it work.',
-        'Run the bot silently in the background (sends metrics to dashboard).',
+        'Run the bot silently in the background (Requires QuestPilot Core - To Activate).',
         'Display the latest lines of the background agent log file.',
         'Open accounts.json in Notepad to add or edit your Microsoft accounts.',
         'Open config.json in Notepad to customize delays, settings, and thresholds.',
@@ -417,7 +558,7 @@ function Show-Menu {
     )
 
     $descriptions_tools = @(
-        'Toggle whether the bot starts automatically when you log into Windows.',
+        'Toggle whether the bot starts automatically at logon (Requires QuestPilot Core - To Activate).',
         'Compile the TypeScript/bundle files of the local project.',
         'Backup configuration, download the latest main code, and reinstall.',
         'Delete all bot files, shortcuts, tasks, and configurations.',
@@ -431,7 +572,7 @@ function Show-Menu {
         if ($global:menuState -eq 'main') {
             $items = @(
                 'Start Bot (Interactive)',
-                'Start Background Agent (Silent)',
+                'Start Background Agent (Silent) [Only Core - To Activate]',
                 'View Background Agent Logs',
                 'Edit Accounts (accounts.json)',
                 'Edit Settings (config.json)',
@@ -442,7 +583,7 @@ function Show-Menu {
         } else {
             $autoStartLabel = if ($global:autoStartStatus -eq 'Enabled') { 'Enabled' } else { 'Disabled' }
             $items = @(
-                "Toggle Windows Auto-Start [Currently: $autoStartLabel]",
+                "Toggle Windows Auto-Start [Currently: $autoStartLabel] [Only Core - To Activate]",
                 'Build Project',
                 'Reinstall / Update Bot (Keeps config)',
                 'Uninstall Everything',
@@ -689,6 +830,7 @@ switch ($Mode) {
 $global:menuState = 'main'
 Initialize-Status
 Ensure-StartMenuShortcut
+Ensure-TaskbarShortcut
 
 while ($true) {
     $choice = Show-Menu
