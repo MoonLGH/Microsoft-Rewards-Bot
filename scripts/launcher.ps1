@@ -1,4 +1,4 @@
-﻿param(
+param(
     [ValidateSet('menu', 'reinstall', 'uninstall', 'autostart-on', 'autostart-off')]
     [string]$Mode = 'menu'
 )
@@ -550,10 +550,11 @@ function Show-Menu {
     $descriptions_main = @(
         'Launch the bot in an interactive command window to watch it work.',
         'Run the bot silently in the background (Requires QuestPilot Core - To Activate).',
-        'Display the latest lines of the background agent log file.',
         'Open accounts.json in Notepad to add or edit your Microsoft accounts.',
         'Open config.json in Notepad to customize delays, settings, and thresholds.',
-        'Open the maintenance submenu (Auto-start, Build, Reinstall, Uninstall).',
+        'Display the latest lines of the background agent log file.',
+        'Open the maintenance submenu (Auto-start, Build, Reinstall, Uninstall, Logs).',
+        'Open the official Discord community server.',
         'Close this launcher window.'
     )
 
@@ -562,6 +563,7 @@ function Show-Menu {
         'Compile the TypeScript/bundle files of the local project.',
         'Backup configuration, download the latest main code, and reinstall.',
         'Delete all bot files, shortcuts, tasks, and configurations.',
+        'Display the latest lines of the background agent log file.',
         'Return to the main launcher menu.'
     )
 
@@ -573,10 +575,11 @@ function Show-Menu {
             $items = @(
                 'Start Bot (Interactive)',
                 'Start Background Agent (Silent) [Only Core - To Activate]',
-                'View Background Agent Logs',
                 'Edit Accounts (accounts.json)',
                 'Edit Settings (config.json)',
+                'View Background Agent Logs',
                 'Maintenance & Tools...',
+                'Join Discord Server',
                 'Exit'
             )
             $descriptions = $descriptions_main
@@ -587,6 +590,7 @@ function Show-Menu {
                 'Build Project',
                 'Reinstall / Update Bot (Keeps config)',
                 'Uninstall Everything',
+                'View Background Agent Logs',
                 '<-- Back to Main Menu'
             )
             $descriptions = $descriptions_tools
@@ -723,6 +727,23 @@ function Edit-Config {
     Open-JsonInNotepad 'config.json'
 }
 
+function Open-Discord {
+    Show-Header 'OPENING DISCORD' 'Launching Discord app or browser.'
+    Show-LoadingAnimation 'Opening Discord invite'
+    $inviteCode = 'pD5jNmWqAS'
+    if (Test-Path "Registry::HKEY_CLASSES_ROOT\discord") {
+        try {
+            Start-Process "discord://discord.gg/$inviteCode" -ErrorAction Stop
+        } catch {
+            Start-Process "https://discord.gg/$inviteCode"
+        }
+    } else {
+        Start-Process "https://discord.gg/$inviteCode"
+    }
+    Write-Host "`n  Discord opened."
+    Start-Sleep -Seconds 1
+}
+
 function Reinstall-Bot {
     Ensure-Administrator 'reinstall'
     Show-Header 'REINSTALLING THE BOT' 'Backing up your JSON files and reinstalling.'
@@ -838,11 +859,12 @@ while ($true) {
         switch ($choice) {
             0 { Start-Bot }
             1 { Start-BackgroundAgent }
-            2 { Show-Logs }
-            3 { Edit-Accounts }
-            4 { Edit-Config }
+            2 { Edit-Accounts }
+            3 { Edit-Config }
+            4 { Show-Logs }
             5 { Change-MenuState 'tools' }
-            6 { break }
+            6 { Open-Discord }
+            7 { break }
         }
     } else {
         switch ($choice) {
@@ -850,7 +872,8 @@ while ($true) {
             1 { Build-Project }
             2 { Reinstall-Bot }
             3 { Uninstall-Bot }
-            4 { Change-MenuState 'main' }
+            4 { Show-Logs }
+            5 { Change-MenuState 'main' }
         }
     }
 }
