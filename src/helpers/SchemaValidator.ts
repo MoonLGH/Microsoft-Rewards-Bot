@@ -35,6 +35,10 @@ const BackgroundAgentSchema = z.object({
     openConsole: z.boolean().default(true)
 })
 
+const TerminalSchema = z.object({
+    enabled: z.boolean().default(true)
+})
+
 const SchedulerSchema = z.object({
     enabled: z.boolean().default(false),
     runOnStartup: z.boolean().default(true),
@@ -121,6 +125,7 @@ export const ConfigSchema = z.object({
     webhook: WebhookSchema,
     redeemGoal: RedeemGoalSchema.optional(),
     backgroundAgent: BackgroundAgentSchema.optional(),
+    terminal: TerminalSchema.optional(),
     scheduler: SchedulerSchema.optional(),
     safetyAdvisory: SafetyAdvisorySchema.optional()
 })

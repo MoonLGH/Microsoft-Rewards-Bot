@@ -15,9 +15,14 @@ export interface Config {
     webhook: ConfigWebhook
     redeemGoal?: ConfigRedeemGoal
     backgroundAgent?: ConfigBackgroundAgent
+    terminal?: ConfigTerminal
     plugins?: ConfigPlugins
     scheduler?: ConfigScheduler
     safetyAdvisory?: ConfigSafetyAdvisory
+}
+
+export interface ConfigTerminal {
+    enabled: boolean
 }
 
 export interface ConfigBackgroundAgent {

@@ -86,6 +86,9 @@
         "allowDashboardAutostart": true,
         "openConsole": true
     },
+    "terminal": {
+        "enabled": true
+    },
     "scheduler": {
         "enabled": false,
         "runOnStartup": true,

@@ -66,6 +66,24 @@ npm run update:repair
 npm run update:doctor
 ```
 
+## Terminal Or Simple Interface
+
+By default, `npm start` uses the terminal. This is the best mode for setup, debugging, and support.
+
+Users who prefer a simple visual view can set:
+
+```jsonc
+"terminal": {
+  "enabled": false
+}
+```
+
+Then `npm start` opens a local interface with the current step, Core status, accounts, points, coupons, and a small input box for license or prompt responses. Raw technical logs stay out of the main view. To force the classic terminal for one launch, run:
+
+```bash
+npm start -- --terminal
+```
+
 Useful environment variables:
 
 - `MSRB_AUTO_UPDATE=0`: disable update checks and updates.

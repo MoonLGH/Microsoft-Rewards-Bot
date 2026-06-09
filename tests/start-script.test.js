@@ -54,3 +54,27 @@ test('start script resolves npm from portable Node runtime before global npm', (
         fs.rmSync(root, { recursive: true, force: true })
     }
 })
+
+test('terminal mode config controls the local interface launcher', () => {
+    const root = tempRoot()
+    try {
+        fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+        fs.writeFileSync(path.join(root, 'src', 'config.json'), JSON.stringify({ terminal: { enabled: false } }))
+
+        assert.equal(startScript.terminalModeEnabled(startScript.readConfig(root)), false)
+        assert.equal(startScript.shouldLaunchInterface(['node', 'scripts/start.js'], {}, root), true)
+        assert.equal(startScript.shouldLaunchInterface(['node', 'scripts/start.js', '--terminal'], {}, root), false)
+        assert.equal(startScript.shouldLaunchInterface(['node', 'scripts/start.js', '--background'], {}, root), false)
+        assert.equal(startScript.shouldLaunchInterface(['node', 'scripts/start.js', '--attach'], {}, root), false)
+        assert.equal(startScript.shouldLaunchInterface(['node', 'scripts/start.js', '--ui-child'], {}, root), false)
+        assert.equal(startScript.shouldLaunchInterface(['node', 'scripts/start.js'], { MSRB_TERMINAL_MODE: '1' }, root), false)
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true })
+    }
+})
+
+test('terminal mode stays enabled by default', () => {
+    assert.equal(startScript.terminalModeEnabled(null), true)
+    assert.equal(startScript.terminalModeEnabled({}), true)
+    assert.equal(startScript.terminalModeEnabled({ terminal: { enabled: true } }), true)
+})

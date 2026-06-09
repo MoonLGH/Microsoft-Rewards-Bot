@@ -51,6 +51,37 @@ function isBackgroundLaunch(argv = process.argv) {
     return argv.includes('--background')
 }
 
+function isAttachLaunch(argv = process.argv) {
+    return argv.includes('--attach')
+}
+
+function isTerminalForced(argv = process.argv, env = process.env) {
+    return argv.includes('--terminal') || env.MSRB_TERMINAL_MODE === '1'
+}
+
+function isUiChild(argv = process.argv, env = process.env) {
+    return argv.includes('--ui-child') || env.MSRB_UI_CHILD === '1'
+}
+
+function readConfig(root = ROOT) {
+    try {
+        return JSON.parse(fs.readFileSync(path.join(root, 'src', 'config.json'), 'utf8'))
+    } catch {
+        return null
+    }
+}
+
+function terminalModeEnabled(config = readConfig()) {
+    return config?.terminal?.enabled !== false
+}
+
+function shouldLaunchInterface(argv = process.argv, env = process.env, root = ROOT) {
+    if (isBackgroundLaunch(argv) || isAttachLaunch(argv) || isTerminalForced(argv, env) || isUiChild(argv, env)) {
+        return false
+    }
+    return !terminalModeEnabled(readConfig(root))
+}
+
 function shouldRunUpdater(argv = process.argv, env = process.env) {
     if (!isBackgroundLaunch(argv)) return true
     return env.MSRB_BACKGROUND_UPDATE === '1'
@@ -70,6 +101,10 @@ function runNpm(args) {
     run(npm.command, [...npm.argsPrefix, ...args], `${npm.label} ${args.join(' ')}`)
 }
 
+function runInterface() {
+    run(process.execPath, ['./scripts/user-interface.js'], 'interface')
+}
+
 async function main() {
     if (shouldRunUpdater()) {
         const updater = new UpdateManager()
@@ -82,6 +117,10 @@ async function main() {
         runNpm(['run', 'build'])
     } else {
         console.log('[START] Background launch: using existing dist build.')
+    }
+    if (shouldLaunchInterface()) {
+        runInterface()
+        return
     }
     run(process.execPath, ['./dist/index.js', ...process.argv.slice(2)], 'bot')
 }
@@ -96,7 +135,13 @@ if (require.main === module) {
 module.exports = {
     hasBuiltRuntime,
     isBackgroundLaunch,
+    isAttachLaunch,
+    isTerminalForced,
+    isUiChild,
+    readConfig,
     resolveNpmInvocation,
     shouldBuildRuntime,
-    shouldRunUpdater
+    shouldLaunchInterface,
+    shouldRunUpdater,
+    terminalModeEnabled
 }
