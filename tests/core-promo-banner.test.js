@@ -15,6 +15,8 @@ test('Core promo banner uses the published main-branch raw asset', () => {
     assert.match(source, /dashboardHost:\s*'rewards\.bing\.com'/)
     assert.match(source, /dashboardPath:\s*'\/dashboard'/)
     assert.match(source, /EdgeSearch_Dashboard/)
+    assert.match(source, /cardTextPatterns:\s*\['search bar',\s*'100 points'\]/)
+    assert.match(source, /cardLinkPatterns:\s*\['microsoft-edge:\/\/\?ux=searchbar',\s*'pc=esb'\]/)
 })
 
 test('browser context installs the Core promo banner init script', () => {
