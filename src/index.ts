@@ -21,7 +21,7 @@ import ActivityRunner from './core/ActivityRunner'
 import { SearchOrchestrator } from './core/SearchOrchestrator'
 import { TaskBase } from './core/TaskBase'
 
-import type { DashboardInfo } from './core/InternalPluginAPI'
+import type { AppliedCoupon, DashboardInfo } from './core/InternalPluginAPI'
 import { PluginManager } from './core/PluginManager'
 import { checkSafetyAdvisory } from './core/SafetyAdvisory'
 import { formatScheduledRun, getNextScheduledRun, isSchedulerEnabled, waitUntil } from './core/Scheduler'
@@ -69,6 +69,7 @@ interface CoreRunStats {
     couponsAvailable: number
     couponsApplied: number
     couponPointsDiscount: number
+    coupons: AppliedCoupon[]
     featuresUsed: string[]
 }
 
@@ -87,6 +88,7 @@ function createEmptyCoreRunStats(): CoreRunStats {
         couponsAvailable: 0,
         couponsApplied: 0,
         couponPointsDiscount: 0,
+        coupons: [],
         featuresUsed: []
     }
 }
@@ -602,17 +604,20 @@ export class MicrosoftRewardsBot {
         if (includeCorePitch) {
             if (hasCore) {
                 lines.push(
-                    `Core impact: +${coreStats.claimPoints} claimed points | ${coreStats.couponsApplied}/${coreStats.couponsAvailable} coupon(s) applied | ${coreStats.couponPointsDiscount} estimated coupon-discount points`
+                    `Core impact: +${coreStats.claimPoints} claimed points | ${coreStats.couponsApplied}/${coreStats.couponsAvailable} coupon(s) handled | ${coreStats.couponPointsDiscount} estimated coupon-discount points`
                 )
+                if (coreStats.coupons.length) {
+                    lines.push(`Core coupons: ${this.formatCouponSummary(coreStats.coupons)}`)
+                }
                 lines.push(
                     `Core features used: ${coreStats.featuresUsed.length ? coreStats.featuresUsed.join(', ') : 'none available this run'}`
                 )
             } else {
                 lines.push(
-                    'Core inactive: premium dashboard scan unavailable, so extra-point/coupon estimates cannot be computed from the public workflow.'
+                    'Core inactive: premium dashboard scan unavailable, so ready-to-claim points and coupon savings were not handled.'
                 )
                 lines.push(
-                    'Core adds claimable point cards, coupon application, app rewards, daily streak details, redeem goals, temporary punchcards, background agent, and remote dashboard control.'
+                    'With Core, this summary can include claimed dashboard points, applied coupon names, coupon savings, app rewards, streak details, goals, punchcards, and remote dashboard control.'
                 )
             }
         }
@@ -629,11 +634,24 @@ export class MicrosoftRewardsBot {
             aggregate.couponsAvailable += stats.couponsAvailable
             aggregate.couponsApplied += stats.couponsApplied
             aggregate.couponPointsDiscount += stats.couponPointsDiscount
+            aggregate.coupons.push(...stats.coupons)
             for (const feature of stats.featuresUsed) {
                 addCoreFeature(aggregate, feature)
             }
         }
         return aggregate
+    }
+
+    private formatCouponSummary(coupons: AppliedCoupon[]): string {
+        const visibleCoupons = coupons.slice(0, 5).map(coupon => {
+            const title = coupon.title || 'coupon'
+            const discount = coupon.pointsDiscount !== null ? `${coupon.pointsDiscount} pts` : 'discount unknown'
+            const expires = coupon.expiresText ? `, ${coupon.expiresText}` : ''
+            return `${title} (${discount}${expires})`
+        })
+
+        const remaining = coupons.length - visibleCoupons.length
+        return remaining > 0 ? `${visibleCoupons.join('; ')}; +${remaining} more` : visibleCoupons.join('; ')
     }
 
     async Main(account: Account): Promise<{ initialPoints: number; collectedPoints: number; coreStats: CoreRunStats }> {
@@ -719,6 +737,7 @@ export class MicrosoftRewardsBot {
                     this.userData.coreStats.couponsAvailable += couponResult.available
                     this.userData.coreStats.couponsApplied += couponResult.applied
                     this.userData.coreStats.couponPointsDiscount += couponResult.totalPointsDiscount
+                    this.userData.coreStats.coupons.push(...couponResult.coupons)
                     if (couponResult.applied > 0) {
                         addCoreFeature(this.userData.coreStats, 'Coupons')
                         this.logger.info(
