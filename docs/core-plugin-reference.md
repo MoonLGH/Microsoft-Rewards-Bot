@@ -39,11 +39,11 @@ Core handles two dashboard side-panel flows:
 | Surface | Detection | Action | Result tracking |
 | --- | --- | --- | --- |
 | Ready-to-claim points | Rewards dashboard card with a points value greater than zero | Opens the claim panel and clicks `Claim points` | Claimed point total and entry count |
-| Coupons | Dashboard control text like `Coupon (1)` or `Coupons (N)` | Opens the coupons panel and clicks each visible `Apply coupon` button | Coupon count, title, expiry text, and estimated point discount |
+| Coupons | Dashboard control text like `Coupon (1)` or `Coupons (N)` | Opens the coupons panel, skips cards already marked `Applied`, and clicks visible apply actions when needed | Coupon count, title, expiry text, and estimated point discount |
 
 Selectors are DOM-driven because Microsoft does not expose a stable public API for these React Aria side panels. Core prefers visible button text, ARIA/dialog scope, and observed Rewards utility classes over dynamic React-generated ids.
 
-Coupon discounts are not normal point earnings. The run summary reports them separately as estimated coupon-discount points instead of adding them to the collected-points balance.
+Coupon discounts are not normal point earnings. The run summary reports them separately as estimated coupon-discount points instead of adding them to the collected-points balance. If the coupon title is available, the summary includes it so users can see what Core handled.
 
 ## Dashboard Card Categories
 
@@ -108,9 +108,9 @@ The public repository includes only examples for local maintainer tooling. Real 
 
 ## Security Boundary
 
-The public plugin API cannot grant official Core entitlement and cannot register premium Core tasks. Only the signed official Core bytecode can unlock those paths in the official release.
+The public plugin API cannot grant official Core entitlement and cannot register premium Core tasks. Only the official compiled Core artifact can unlock those paths in the official release.
 
-Because the source-available repository is modifiable, a local copy can remove local limits from its own files. The license does not permit public redistribution of those changes when they bypass, unlock, replace, emulate, or reproduce Core. The protected value is the maintained signed Core release, its license checks, and the premium automation that is not shipped as source.
+Because the source-available repository is modifiable, a local copy can remove local limits from its own files. The license does not permit public redistribution of changes that bypass, unlock, replace, emulate, or reproduce Core. Core remains a paid proprietary plugin.
 
 Compiled local artifacts are not secret storage. Backend authority must remain in Core-API.
 

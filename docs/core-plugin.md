@@ -2,7 +2,7 @@
 
 Navigation: [Documentation index](./README.md) -> [Plugin system overview](./plugins.md) -> [Core technical reference](./core-plugin-reference.md) -> [Core Dashboard](./dashboard.md)
 
-Core is the premium layer for Microsoft Rewards Bot. The open-source bot handles the essential workflow; Core adds the maintained automation, remote dashboard, and background agent experience for users who want the bot to feel installed, monitored, and controllable instead of just running in a terminal.
+Core is the paid, proprietary plugin for Microsoft Rewards Bot. The open-source bot handles the essential workflow; Core adds the polished automation, dashboard, background mode, and run summaries for users who want the bot to feel simple instead of technical.
 
 ## Why Core
 
@@ -12,9 +12,8 @@ Core is built for users who want:
 - automatic handling for ready-to-claim points and dashboard coupons;
 - a remote dashboard to monitor machines, runs, accounts, versions, and logs;
 - Windows/Linux background startup without keeping a terminal open;
-- Docker-compatible Core support on the official Linux x64 Node.js target;
-- safe remote commands such as run now, stop safely, open console, and restart agent;
-- encrypted local account editing from the dashboard without storing secrets on the server.
+- safe remote actions such as run now, stop safely, open console, and restart agent;
+- simpler status and summaries for people who do not want to read terminal logs.
 
 Core is especially useful for desktop users who do not want to understand terminals. Once configured, the bot can start silently with the computer, appear in the dashboard, and wait for scheduler runs or manual dashboard commands.
 
@@ -57,7 +56,7 @@ From the dashboard, users can:
 - edit local accounts through encrypted commands;
 - request a sanitized diagnostics bundle.
 
-The dashboard is tied to a valid Core license and Discord login.
+The dashboard is tied to a valid Core license and Discord login. After buying Core, join the Discord and open the `Core Panel` channel to access the panel, connect your license, and manage your devices.
 
 ## Rewards Coverage
 
@@ -65,7 +64,9 @@ Core can inspect the newer Rewards dashboard surfaces that are not part of the s
 
 - claim ready-to-claim point cards when the card shows a value greater than zero;
 - open the Coupons panel when `Coupon (N)` shows one or more available coupons;
-- apply each visible `Apply coupon` action and log the coupon title, expiry, and estimated point discount;
+- apply each visible coupon that still needs action;
+- recognize coupons that already show `Applied`;
+- log coupon title, expiry, and estimated point discount;
 - add Core impact lines to the optional final Discord/Ntfy run summary.
 
 Enable the relevant workers in `src/config.json`:
@@ -83,7 +84,7 @@ Enable the relevant workers in `src/config.json`:
 }
 ```
 
-The final summary uses the existing `webhook.discord` and `webhook.ntfy` destinations. When Core is active, it reports claimed points, applied coupons, and estimated coupon-discount points. When Core is inactive, it does not invent a number; it reports that premium dashboard estimation was unavailable.
+The final summary uses the existing `webhook.discord` and `webhook.ntfy` destinations. When Core is active, it reports claimed points, handled coupons, coupon names, expiry text when available, and estimated coupon-discount points. When Core is inactive, it keeps the message honest and explains what Core could have handled.
 
 ## Background Agent
 
@@ -144,7 +145,7 @@ Accepted payment methods:
 
 Xbox and PlayStation gift cards are not accepted.
 
-After payment, you receive a license key. Enable the preinstalled Core plugin in `plugins/plugins.jsonc`, start the bot, and enter the key when prompted.
+After payment, you receive a license key. Join the Discord, open the `Core Panel` channel, and follow the panel instructions. Then enable the preinstalled Core plugin in `plugins/plugins.jsonc`, start the bot, and enter the key when prompted.
 
 ```jsonc
 "core": {
