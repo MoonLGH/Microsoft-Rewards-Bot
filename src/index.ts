@@ -6,6 +6,7 @@ import type { BrowserFingerprintWithHeaders } from 'fingerprint-generator'
 
 import AutomationUtils from './automation/AutomationUtils'
 import BrowserManager from './automation/BrowserManager'
+import { DESKTOP_BROWSER_VIEWPORT } from './automation/BrowserViewport'
 import PageController from './automation/PageController'
 
 import { loadAccounts, loadConfig } from './helpers/ConfigLoader'
@@ -649,8 +650,8 @@ export class MicrosoftRewardsBot {
                 const initialContext: BrowserContext = mobileSession.context
                 this.mainMobilePage = await initialContext.newPage()
 
-                // Set a tablet-sized viewport for a comfortable visual while keeping mobile UA
-                await this.mainMobilePage.setViewportSize({ width: 768, height: 1024 })
+                // Keep a full desktop-sized visual surface even when the run uses mobile attribution.
+                await this.mainMobilePage.setViewportSize(DESKTOP_BROWSER_VIEWPORT)
 
                 this.logger.info('main', 'BROWSER', `Mobile Browser started | ${accountEmail}`)
 

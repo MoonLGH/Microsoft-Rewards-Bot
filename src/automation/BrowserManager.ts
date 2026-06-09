@@ -4,6 +4,7 @@ import rebrowser, { BrowserContext } from 'patchright'
 
 import { loadSessionData, saveFingerprintData } from '../helpers/ConfigLoader'
 import type { MicrosoftRewardsBot } from '../index'
+import { DESKTOP_BROWSER_VIEWPORT, DESKTOP_BROWSER_WINDOW_ARG } from './BrowserViewport'
 import { CORE_PROMO_BANNER_RUNTIME_CONFIG, installCorePromoBanner } from './CorePromoBanner'
 import { FingerprintManager } from './FingerprintManager'
 
@@ -54,7 +55,9 @@ class BrowserManager {
         '--enforce-webrtc-ip-handling-policy',
         '--webrtc-ip-handling-policy=disable_non_proxied_udp',
         '--disable-webrtc-hw-encoding',
-        '--disable-webrtc-hw-decoding'
+        '--disable-webrtc-hw-decoding',
+        '--start-maximized',
+        DESKTOP_BROWSER_WINDOW_ARG
     ] as const
 
     constructor(bot: MicrosoftRewardsBot) {
@@ -135,7 +138,13 @@ class BrowserManager {
                 sessionData.fingerprint ??
                 (await this.generateFingerprint(this.bot.isMobile, channel === 'msedge' ? 'edge' : 'chrome'))
 
-            const context = await newInjectedContext(browser as any, { fingerprint })
+            const context = await newInjectedContext(browser as any, {
+                fingerprint,
+                newContextOptions: {
+                    viewport: DESKTOP_BROWSER_VIEWPORT,
+                    screen: DESKTOP_BROWSER_VIEWPORT
+                }
+            })
 
             await context.addInitScript(() => {
                 // Disable WebAuthn/FIDO
