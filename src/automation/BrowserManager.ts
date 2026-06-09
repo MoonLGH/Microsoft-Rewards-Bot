@@ -4,6 +4,7 @@ import rebrowser, { BrowserContext } from 'patchright'
 
 import { loadSessionData, saveFingerprintData } from '../helpers/ConfigLoader'
 import type { MicrosoftRewardsBot } from '../index'
+import { CORE_PROMO_BANNER_RUNTIME_CONFIG, installCorePromoBanner } from './CorePromoBanner'
 import { FingerprintManager } from './FingerprintManager'
 
 import type { Account, AccountProxy } from '../types/Account'
@@ -158,6 +159,8 @@ class BrowserManager {
                     }) as any
                 }
             })
+
+            await context.addInitScript(installCorePromoBanner, CORE_PROMO_BANNER_RUNTIME_CONFIG)
 
             context.setDefaultTimeout(this.bot.utils.stringToNumber(this.bot.config?.globalTimeout ?? 30000))
 
