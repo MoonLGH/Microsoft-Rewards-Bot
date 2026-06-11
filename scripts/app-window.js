@@ -5,6 +5,7 @@ const http = require('http')
 const os = require('os')
 const path = require('path')
 const { createAccountStorage } = require('./account-storage')
+const { createStartupManager } = require('./startup-manager')
 
 const ROOT = path.resolve(__dirname, '..')
 const PORT = Number.parseInt(process.env.MSRB_APP_PORT || '0', 10)
@@ -16,6 +17,11 @@ const APP_WINDOW_HEIGHT = 900
 const API_TOKEN = crypto.randomBytes(32).toString('base64url')
 const MAX_API_BODY_BYTES = 64 * 1024
 const accountStorage = createAccountStorage({ root: ROOT })
+const startupManager = createStartupManager({ root: ROOT })
+let agentApi = null
+try {
+    agentApi = require('../dist/core/AgentRuntime')
+} catch {}
 
 function readVersion() {
     try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version } catch { return '4.0.x' }
@@ -41,6 +47,7 @@ const state = {
     finishedAt: null,
     exitCode: null,
     isRunning: false,
+    agentConnected: false,
     accounts: readAccounts(),
     activeAccount: null,
     logs: [],
@@ -70,6 +77,7 @@ let shutdownTimer = null
 let stopRequested = false
 let shuttingDown = false
 let pendingLicenseKey = ''
+let closeAgentLogSubscription = null
 
 function readAccounts() {
     try {
@@ -180,8 +188,29 @@ function updateStateFromLine(line) {
     }
 }
 
-function startBot(licenseKey = pendingLicenseKey) {
+async function startBot(licenseKey = pendingLicenseKey) {
     if (botProcess) return false
+    if (agentApi) {
+        const agentStatus = await agentApi.getAgentStatus().catch(() => ({ active: false }))
+        if (agentStatus.active) {
+            const requested = await agentApi.requestAgentRun().catch(error => ({
+                accepted: false,
+                reason: error.message
+            }))
+            if (!requested.accepted) {
+                state.status = 'Attention'
+                state.detail = requested.reason || 'The Core agent rejected the run'
+                return false
+            }
+            await connectToAgentLogs()
+            state.agentConnected = true
+            state.isRunning = true
+            state.status = 'Starting'
+            state.detail = 'Run requested through the Core background agent'
+            pushLog('info', 'Rewards Desk connected to the existing Core background agent.')
+            return true
+        }
+    }
     stopRequested = false
     pendingLicenseKey = String(licenseKey || '').trim()
     state.status = 'Starting'
@@ -233,7 +262,50 @@ function startBot(licenseKey = pendingLicenseKey) {
     return true
 }
 
-function stopBot() {
+async function connectToAgentLogs() {
+    if (!agentApi || closeAgentLogSubscription) return
+    try {
+        closeAgentLogSubscription = await agentApi.subscribeToAgentLogs(
+            log => pushLog(log.level || 'info', log.message || ''),
+            () => {
+                closeAgentLogSubscription = null
+                state.agentConnected = false
+            }
+        )
+    } catch {}
+}
+
+async function refreshAgentState() {
+    if (!agentApi || botProcess) return
+    const agentStatus = await agentApi.getAgentStatus().catch(() => ({ active: false, runState: 'idle' }))
+    state.agentConnected = Boolean(agentStatus.active)
+    if (!agentStatus.active) return
+    await connectToAgentLogs()
+    if (agentStatus.runState === 'running') {
+        state.isRunning = true
+        state.status = 'Running'
+        if (!state.detail || /ready|requested/i.test(state.detail)) {
+            state.detail = 'Controlled by the Core background agent'
+        }
+    } else if (state.isRunning && !botProcess) {
+        state.isRunning = false
+        state.exitCode = agentStatus.lastExitCode ?? 0
+        state.finishedAt = new Date().toISOString()
+        state.status = state.exitCode === 0 ? 'Complete' : 'Attention'
+        state.detail = state.exitCode === 0 ? 'Agent run finished' : 'Agent run stopped with an error'
+        state.metrics.progress = state.exitCode === 0 ? 100 : state.metrics.progress
+    }
+}
+
+async function stopBot() {
+    if (!botProcess && state.agentConnected && agentApi) {
+        const accepted = await agentApi.requestAgentStop().catch(() => false)
+        if (accepted) {
+            state.status = 'Stopping'
+            state.detail = 'The Core agent will stop after the current account'
+        }
+        return accepted
+    }
     if (!botProcess) return false
     state.status = 'Stopping'
     state.detail = 'Stopping after user request'
@@ -265,65 +337,6 @@ function readAccountsRaw() {
 function writeAccountsRaw(accounts) {
     accountStorage.writeAccounts(accounts)
     state.accounts = readAccounts()
-}
-
-// ── Startup helpers ──────────────────────────────────────────────────
-const STARTUP_CMD = `"${process.execPath}" "${path.join(ROOT, 'scripts', 'start.js')}"`
-
-function getStartupState() {
-    if (process.platform === 'win32') {
-        try {
-            const out = childProcess.execSync(
-                'REG QUERY "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v RewardsDesk',
-                { stdio: ['pipe','pipe','pipe'], windowsHide: true }
-            ).toString()
-            return { installed: out.includes('RewardsDesk'), method: 'registry' }
-        } catch { return { installed: false, method: 'registry' } }
-    }
-    if (process.platform === 'darwin') {
-        const plist = path.join(process.env.HOME || '', 'Library', 'LaunchAgents', 'com.rewardsdesk.plist')
-        return { installed: fs.existsSync(plist), method: 'launchagent' }
-    }
-    const desktop = path.join(process.env.HOME || '', '.config', 'autostart', 'rewards-desk.desktop')
-    return { installed: fs.existsSync(desktop), method: 'desktop' }
-}
-
-function setStartup(enable) {
-    if (process.platform === 'win32') {
-        if (enable) {
-            childProcess.execSync(
-                `REG ADD "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v RewardsDesk /t REG_SZ /d ${JSON.stringify(STARTUP_CMD)} /f`,
-                { stdio: 'ignore', windowsHide: true }
-            )
-        } else {
-            try {
-                childProcess.execSync(
-                    'REG DELETE "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v RewardsDesk /f',
-                    { stdio: 'ignore', windowsHide: true }
-                )
-            } catch {}
-        }
-        return
-    }
-    if (process.platform === 'darwin') {
-        const plist = path.join(process.env.HOME || '', 'Library', 'LaunchAgents', 'com.rewardsdesk.plist')
-        if (enable) {
-            const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n  <key>Label</key><string>com.rewardsdesk</string>\n  <key>ProgramArguments</key><array><string>${process.execPath}</string><string>${path.join(ROOT, 'scripts', 'start.js')}</string></array>\n  <key>RunAtLoad</key><true/>\n</dict></plist>`
-            fs.writeFileSync(plist, xml, 'utf8')
-        } else {
-            if (fs.existsSync(plist)) fs.unlinkSync(plist)
-        }
-        return
-    }
-    // Linux .desktop autostart
-    const dir = path.join(process.env.HOME || '', '.config', 'autostart')
-    const desktop = path.join(dir, 'rewards-desk.desktop')
-    if (enable) {
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-        fs.writeFileSync(desktop, `[Desktop Entry]\nType=Application\nName=Rewards Desk\nExec=${process.execPath} ${path.join(ROOT, 'scripts', 'start.js')}\nX-GNOME-Autostart-enabled=true\n`, 'utf8')
-    } else {
-        if (fs.existsSync(desktop)) fs.unlinkSync(desktop)
-    }
 }
 
 const CONFIG_SRC  = path.join(ROOT, 'src',  'config.json')
@@ -600,13 +613,17 @@ function html() {
       background:var(--bg);color:var(--text);
       display:flex;
       animation:appIn .4s ease-out;
+      user-select:none;-webkit-user-select:none;
     }
+    input,textarea,select{user-select:text;-webkit-user-select:text}
     @keyframes appIn{from{opacity:0}to{opacity:1}}
     @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
     @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.75)}}
     @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
     @keyframes spin{to{transform:rotate(360deg)}}
     @keyframes glowPulse{0%,100%{box-shadow:0 0 0 0 rgba(30,155,255,0)}50%{box-shadow:0 0 24px 4px rgba(30,155,255,.18)}}
+    @keyframes viewIn{from{opacity:0;transform:translateY(8px) scale(.995)}to{opacity:1;transform:none}}
+    @keyframes coreAura{0%,100%{filter:drop-shadow(0 0 0 rgba(247,200,92,0))}50%{filter:drop-shadow(0 0 12px rgba(247,200,92,.25))}}
     button,input{font:inherit}
     ::-webkit-scrollbar{width:4px;height:4px}
     ::-webkit-scrollbar-track{background:transparent}
@@ -903,7 +920,8 @@ function html() {
     /* Settings */
     .settings-wrap{display:none;flex-direction:column;gap:14px;overflow-y:auto;min-height:0}
     .settings-wrap.vis{display:flex}
-    .settings-section{background:linear-gradient(180deg,rgba(10,22,40,.96),rgba(5,12,24,.97));border:1px solid var(--border);border-radius:var(--r);padding:16px}
+    .settings-section{background:linear-gradient(180deg,rgba(10,22,40,.96),rgba(5,12,24,.97));border:1px solid var(--border);border-radius:var(--r);padding:16px;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+    .settings-section:hover{transform:translateY(-1px);border-color:rgba(46,232,255,.2);box-shadow:0 10px 28px rgba(0,0,0,.16)}
     .settings-section h3{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:11px;display:flex;align-items:center;gap:4px}
     .settings-section-core{border-color:rgba(247,200,92,.2);background:linear-gradient(180deg,rgba(20,17,5,.97),rgba(10,9,3,.98))}
     .settings-section-core h3{color:var(--gold)}
@@ -940,6 +958,25 @@ function html() {
     .core-footer-cta p{font-size:13px;color:var(--muted);margin:0}
     .toggle-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .toggle-grid-1{display:flex;flex-direction:column;gap:8px}
+    .startup-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .startup-card{
+      position:relative;display:flex;align-items:center;gap:13px;padding:14px;
+      border-radius:12px;border:1px solid var(--border);
+      background:linear-gradient(135deg,rgba(30,155,255,.06),rgba(255,255,255,.018));
+      transition:all .2s ease;overflow:hidden;
+    }
+    .startup-card:hover{border-color:rgba(46,232,255,.28);transform:translateY(-1px)}
+    .startup-card.core-only{border-color:rgba(247,200,92,.2);background:linear-gradient(135deg,rgba(247,200,92,.075),rgba(255,255,255,.018))}
+    .startup-card.core-only:hover{border-color:rgba(247,200,92,.38)}
+    .startup-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(46,232,255,.08);color:var(--cyan);border:1px solid rgba(46,232,255,.16)}
+    .startup-card.core-only .startup-icon{background:rgba(247,200,92,.1);color:var(--gold);border-color:rgba(247,200,92,.2)}
+    .startup-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .startup-copy{flex:1;min-width:0}
+    .startup-badge{display:inline-flex;margin-left:6px;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--gold)}
+    .startup-method{font-size:10px;color:rgba(110,146,184,.7);margin-top:4px}
+    .view-animate{animation:viewIn .24s cubic-bezier(.2,.8,.2,1)}
+    body.core-enhanced .hero,body.core-enhanced .core-active-hero{animation:coreAura 4s ease-in-out infinite}
+    body.core-enhanced .nav-item-core{background:linear-gradient(90deg,rgba(247,200,92,.1),transparent)}
     /* Configurable row (toggle + Configure button) */
     .cfg-wrap{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;background:rgba(255,255,255,.025);border:1px solid var(--border);transition:border-color .15s}
     .cfg-wrap:hover{border-color:rgba(30,155,255,.25)}
@@ -1183,8 +1220,19 @@ function html() {
     .storage-state.warn{color:var(--gold);border-color:rgba(247,200,92,.22);background:rgba(247,200,92,.07)}
     .storage-state.warn:before{background:var(--gold)}
     .advanced-caption{font-size:11px;color:var(--muted);margin-top:7px}
+    .storage-panel{display:flex;align-items:center;gap:14px;flex:1;min-width:280px}
+    .storage-shield{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--green);background:rgba(47,210,125,.08);border:1px solid rgba(47,210,125,.18)}
+    .storage-shield svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8}
+    .storage-tools{margin-top:12px;border-top:1px solid var(--border);padding-top:12px}
+    .storage-tools>summary{cursor:pointer;color:var(--muted);font-size:11.5px;font-weight:700;list-style:none}
+    .storage-tools>summary::-webkit-details-marker{display:none}
+    .storage-tools[open]>summary{color:var(--cyan)}
+    .storage-tools .advanced-actions{margin-top:11px;justify-content:flex-start}
     .term-row{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
     .term-row .toggle-wrap-left{flex:1;min-width:200px}
+    @media (prefers-reduced-motion:reduce){
+      *,*:before,*:after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+    }
 
     /* ── Plugins page ───────────────────────────────────────────── */
     .plugins-wrap{display:none;flex-direction:column;gap:16px;overflow-y:auto;min-height:0;padding-bottom:8px}
@@ -1509,8 +1557,29 @@ function html() {
         <div class="toggle-grid">
           <div class="toggle-wrap"><div class="toggle-wrap-left"><div class="toggle-label">Headless mode</div><div class="toggle-sub">Run browser in background</div></div><label class="toggle"><input type="checkbox" id="tog-headless"><span class="toggle-slider"></span></label></div>
           <div class="toggle-wrap"><div class="toggle-wrap-left"><div class="toggle-label">Run on zero points</div><div class="toggle-sub">Run even if no points left</div></div><label class="toggle"><input type="checkbox" id="tog-runOnZero"><span class="toggle-slider"></span></label></div>
-          <div class="toggle-wrap"><div class="toggle-wrap-left"><div class="toggle-label">Start on system boot</div><div class="toggle-sub">Launch Rewards Desk automatically when the computer starts</div></div><label class="toggle"><input type="checkbox" id="tog-startup"><span class="toggle-slider"></span></label></div>
-          <div class="toggle-wrap"><div class="toggle-wrap-left"><div class="toggle-label">Background agent<span class="beta-badge">Beta</span></div><div class="toggle-sub">Auto-start the bot &amp; connect to the remote dashboard</div></div><label class="toggle"><input type="checkbox" id="tog-bgAgent"><span class="toggle-slider"></span></label></div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Start with your computer</h3>
+        <div class="startup-grid">
+          <div class="startup-card">
+            <div class="startup-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg></div>
+            <div class="startup-copy">
+              <div class="toggle-label">Open Rewards Desk</div>
+              <div class="toggle-sub">Show this interface automatically when you sign in.</div>
+              <div class="startup-method" id="startup-desk-method"></div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="tog-startup-desk"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="startup-card core-only">
+            <div class="startup-icon"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6v3a4 4 0 0 0 4 4h1"/><path d="M12 3a6 6 0 0 1 6 6v3a4 4 0 0 1-4 4h-1"/><path d="M9 20h6"/></svg></div>
+            <div class="startup-copy">
+              <div class="toggle-label">Core remote access <span class="startup-badge">Core</span></div>
+              <div class="toggle-sub">Keep a hidden agent online so you can launch and monitor runs remotely.</div>
+              <div class="startup-method" id="startup-agent-method"></div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="tog-startup-agent"><span class="toggle-slider"></span></label>
+          </div>
         </div>
       </div>
       <div class="settings-section settings-section-core" id="settings-core-premium">
@@ -1531,11 +1600,6 @@ function html() {
           <div class="toggle-wrap"><div class="toggle-wrap-left"><div class="toggle-label">Streak protection</div><div class="toggle-sub">Keep streak protection enabled on the dashboard</div></div><label class="toggle"><input type="checkbox" id="tog-core-streakProtection"><span class="toggle-slider"></span></label></div>
           <div class="toggle-wrap"><div class="toggle-wrap-left"><div class="toggle-label">Temporary punchcards<span class="beta-badge">Beta</span></div><div class="toggle-sub">Complete limited-time punchcard offers</div></div><label class="toggle"><input type="checkbox" id="tog-core-temporaryPunchcards"><span class="toggle-slider"></span></label></div>
           <div class="toggle-wrap"><div class="toggle-wrap-left"><div class="toggle-label">Dashboard data</div><div class="toggle-sub">Rich dashboard snapshots, ready-to-claim &amp; streak info</div></div><label class="toggle"><input type="checkbox" id="tog-core-collectDashboardInfo"><span class="toggle-slider"></span></label></div>
-        </div>
-        <div class="cfg-wrap" style="margin-top:8px">
-          <div class="toggle-wrap-left"><div class="toggle-label">Remote dashboard sync</div><div class="toggle-sub">Stream telemetry to the Core dashboard &amp; allow remote control</div></div>
-          <button class="btn-cfg" data-cfg="dashboardSync">Configure</button>
-          <label class="toggle"><input type="checkbox" id="tog-core-dashboardSync"><span class="toggle-slider"></span></label>
         </div>
       </div>
       <div class="settings-section">
@@ -1590,19 +1654,25 @@ function html() {
       <div class="settings-section settings-section-advanced">
         <h3>Advanced</h3>
         <div class="advanced-block">
-          <div class="advanced-copy">
-            <div class="toggle-label">Account protection</div>
-            <div class="toggle-sub">Account data is encrypted automatically with a key protected by your operating system.</div>
-            <div class="storage-state" id="account-storage-status">Checking protected storage…</div>
-            <div class="advanced-caption">Disabling protection writes account credentials back to plaintext JSON.</div>
+          <div class="storage-panel">
+            <div class="storage-shield"><svg viewBox="0 0 24 24"><path d="M12 3 20 6v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-3z"/><path d="m9 12 2 2 4-5"/></svg></div>
+            <div class="advanced-copy">
+              <div class="toggle-label">Account protection</div>
+              <div class="toggle-sub">Automatic AES-256-GCM encryption with the key protected by your operating system.</div>
+              <div class="storage-state" id="account-storage-status">Checking protected storage…</div>
+            </div>
           </div>
-          <div class="advanced-actions">
-            <button class="btn btn-secondary btn-sm" id="storage-toggle">Manage protection</button>
-            <button class="btn btn-secondary btn-sm" id="storage-rotate">Rotate key</button>
-            <button class="btn btn-secondary btn-sm" id="storage-export">Export backup</button>
-            <button class="btn btn-secondary btn-sm" id="storage-import">Import backup</button>
-          </div>
+          <button class="btn btn-secondary btn-sm" id="storage-export">Export protected backup</button>
         </div>
+        <details class="storage-tools">
+          <summary>Security and recovery options</summary>
+          <div class="advanced-caption">These actions are rarely needed. Disabling protection requires an explicit local-user confirmation and writes credentials to plaintext JSON.</div>
+          <div class="advanced-actions">
+            <button class="btn btn-secondary btn-sm" id="storage-toggle">Disable protection</button>
+            <button class="btn btn-secondary btn-sm" id="storage-rotate">Rotate local key</button>
+            <button class="btn btn-secondary btn-sm" id="storage-import">Import protected backup</button>
+          </div>
+        </details>
         <div class="advanced-block term-row">
           <div class="toggle-wrap-left">
             <div class="toggle-label">Developer terminal mode</div>
@@ -1985,12 +2055,21 @@ function html() {
     var _licActivated = false;
     var _licClientReady = false;
     var _coreData = { tier: 'free' };
+    var _storageConfirmation = '';
     var PLUGIN_DOC_URL = 'https://github.com/QuestPilot/Microsoft-Rewards-Bot/blob/main/docs/create-plugin.md';
     var DOCS_GITHUB_URL = 'https://github.com/QuestPilot/Microsoft-Rewards-Bot/tree/main/docs';
 
+    document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+    document.addEventListener('dragstart', function(e) { e.preventDefault(); });
+    document.addEventListener('keydown', function(e) {
+      var blocked = e.key === 'F12' || (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key.toUpperCase())) ||
+        (e.ctrlKey && e.key.toUpperCase() === 'U');
+      if (blocked) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+
     // ── Core feature gating (config.json core.*) ──
     var CORE_KEYS = ['claimPoints','applyCoupons','doubleSearchPoints','appReward','readToEarn',
-      'dailyCheckIn','dailyStreak','streakProtection','temporaryPunchcards','collectDashboardInfo','dashboardSync'];
+      'dailyCheckIn','dailyStreak','streakProtection','temporaryPunchcards','collectDashboardInfo'];
     // Core features whose run also depends on an open-source worker flag being on.
     var CORE_WORKER_MAP = {
       claimPoints:'doClaimPoints', applyCoupons:'doApplyCoupons', readToEarn:'doReadToEarn',
@@ -2030,16 +2109,6 @@ function html() {
           { label:'Include Core upgrade pitch', path:'webhook.runSummary.includeCorePitch', type:'checkbox' }
         ],
         advanced: []
-      },
-      dashboardSync: {
-        title: 'Remote dashboard sync', sub: 'Stream telemetry to the Core dashboard for remote control.',
-        essential: [
-          { label:'Auto-connect dashboard on start', path:'backgroundAgent.allowDashboardAutostart', type:'checkbox' }
-        ],
-        advanced: [
-          { label:'Keep background agent running', path:'backgroundAgent.enabled', type:'checkbox' },
-          { label:'Open console window on start', path:'backgroundAgent.openConsole', type:'checkbox' }
-        ]
       }
     };
 
@@ -2152,6 +2221,12 @@ function html() {
       if (v === 'core') renderCoreView();
       if (v === 'plugins') loadPlugins();
       if (v === 'docs') loadDocs();
+      var active = v === 'dash' ? G('view-dash') : G('view-' + v);
+      if (active) {
+        active.classList.remove('view-animate');
+        void active.offsetWidth;
+        active.classList.add('view-animate');
+      }
     }
 
     function setRing(pct) {
@@ -2311,8 +2386,9 @@ function html() {
     async function refreshAccountStorage() {
       var result = await fetch('/api/account-storage').then(function(r){return r.json();});
       var status = G('account-storage-status');
+      _storageConfirmation = result.disableConfirmation || '';
       status.textContent = result.encrypted
-        ? 'Encrypted with ' + result.provider + '. Changes are re-encrypted automatically.'
+        ? 'Protected by ' + result.provider
         : 'Plaintext JSON' + (result.warning ? ' — ' + result.warning : '.');
       status.classList.toggle('ok', !!result.encrypted);
       status.classList.toggle('warn', !result.encrypted);
@@ -2336,8 +2412,16 @@ function html() {
     G('storage-toggle').addEventListener('click', async function() {
       try {
         var encrypted = this.dataset.encrypted === '1';
-        if (encrypted && !confirm('Disable encryption and restore src/accounts.json in plaintext?')) return;
-        await storageAction(encrypted ? 'disable' : 'enable');
+        var payload = {};
+        if (encrypted) {
+          var typed = prompt(
+            'This will write all account credentials to plaintext JSON.\\n\\nTo confirm as the current local user, type: ' +
+              _storageConfirmation
+          );
+          if (typed === null) return;
+          payload.confirmation = typed;
+        }
+        await storageAction(encrypted ? 'disable' : 'enable', payload);
       } catch(e) { alert(e.message); }
     });
     G('storage-rotate').addEventListener('click', async function() {
@@ -2448,7 +2532,6 @@ function html() {
       var elWr = G('tog-wh-runSummary'); if (elWr) elWr.checked = !!(wh.runSummary && wh.runSummary.enabled);
       var h = G('tog-headless'); if (h) h.checked = s.headless === true;
       var rz = G('tog-runOnZero'); if (rz) rz.checked = s.runOnZeroPoints === true;
-      var ba = G('tog-bgAgent'); if (ba) ba.checked = !!(s.backgroundAgent && s.backgroundAgent.enabled);
       var sc = s.scheduler || {};
       _schedCache = sc; updateNextRun();
       var schTog = G('tog-scheduler');
@@ -2477,7 +2560,18 @@ function html() {
       });
       // Startup
       fetch('/api/startup').then(function(r){return r.json();}).then(function(st){
-        var el = G('tog-startup'); if (el) el.checked = !!st.installed;
+        var desk = G('tog-startup-desk');
+        var agent = G('tog-startup-agent');
+        if (desk) desk.checked = !!(st.desk && st.desk.installed);
+        if (agent) {
+          agent.checked = !!(st.agent && st.agent.installed);
+          agent.disabled = !hasCore || !(st.agent && st.agent.supported !== false);
+        }
+        if (G('startup-desk-method')) G('startup-desk-method').textContent =
+          st.desk && st.desk.method ? 'Uses ' + st.desk.method.replace(/-/g, ' ') : '';
+        if (G('startup-agent-method')) G('startup-agent-method').textContent = !hasCore
+          ? 'Activate Core to enable remote access.'
+          : (st.agent && st.agent.installed ? 'Agent starts silently at sign-in.' : 'Available with your active Core license.');
       }).catch(function(){});
     }
     function _updateSchFields(on) {
@@ -2584,17 +2678,29 @@ function html() {
     });
     G('cfg-modal-done').addEventListener('click', function() { G('cfg-modal').classList.remove('open'); });
     G('cfg-modal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('open'); });
-    // Startup toggle
-    G('tog-startup').addEventListener('change', function() {
-      var enabled = this.checked;
-      fetch('/api/startup', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({enable:enabled})})
-        .catch(function(){});
-    });
+    function bindStartupToggle(id, mode) {
+      var el = G(id); if (!el) return;
+      el.addEventListener('change', async function() {
+        var enabled = this.checked;
+        var response = await fetch('/api/startup', {
+          method:'POST',
+          headers:{'content-type':'application/json'},
+          body:JSON.stringify({mode:mode, enable:enabled})
+        }).catch(function(){return null;});
+        if (!response || !response.ok) {
+          this.checked = !enabled;
+          var result = response ? await response.json().catch(function(){return {};}) : {};
+          alert(result.error || 'Could not update startup settings.');
+        }
+      });
+    }
+    bindStartupToggle('tog-startup-desk', 'desk');
+    bindStartupToggle('tog-startup-agent', 'agent');
     var TOGGLE_MAP = {
       'tog-doDailySet':'workers.doDailySet','tog-doSpecialPromotions':'workers.doSpecialPromotions',
       'tog-doMorePromotions':'workers.doMorePromotions','tog-doDesktopSearch':'workers.doDesktopSearch',
       'tog-doMobileSearch':'workers.doMobileSearch','tog-doAppPromotions':'workers.doAppPromotions',
-      'tog-headless':'headless','tog-runOnZero':'runOnZeroPoints','tog-bgAgent':'backgroundAgent.enabled'
+      'tog-headless':'headless','tog-runOnZero':'runOnZeroPoints'
     };
     Object.keys(TOGGLE_MAP).forEach(function(id) {
       var el = G(id); if (!el) return;
@@ -2644,6 +2750,7 @@ function html() {
       _coreData = data || { tier: 'free' };
       _licClientReady = !!data.clientReady;
       _licActivated = data.tier === 'premium';
+      document.body.classList.toggle('core-enhanced', _licActivated);
       _updateLicSidebarBtn(data);
       renderCoreView();
       if (!_licActivated && _licClientReady) {
@@ -2714,6 +2821,7 @@ function html() {
       btn.disabled = false; btn.innerHTML = orig;
       if (result.success) {
         _licActivated = true;
+        document.body.classList.add('core-enhanced');
         _coreData = { tier: 'premium', planType: result.planType, expiresAt: result.expiresAt, clientReady: true };
         G('lic-success-plan').textContent = result.planType || 'Premium';
         G('lic-success-expires').textContent = result.expiresAt
@@ -3072,18 +3180,19 @@ const server = http.createServer((req, res) => {
         return
     }
     if (req.method === 'POST' && req.url === '/api/start') {
-        readApiBody(req, res, body => {
+        readApiBody(req, res, async body => {
             const parsed = parseJson(body, {})
-            const started = startBot(parsed.licenseKey || '')
+            const started = await startBot(parsed.licenseKey || '')
             res.writeHead(started ? 204 : 409)
             res.end()
         })
         return
     }
     if (req.method === 'POST' && req.url === '/api/stop') {
-        const stopped = stopBot()
-        res.writeHead(stopped ? 204 : 409)
-        res.end()
+        Promise.resolve(stopBot()).then(stopped => {
+            res.writeHead(stopped ? 204 : 409)
+            res.end()
+        })
         return
     }
     if (req.method === 'POST' && req.url === '/api/close') {
@@ -3123,21 +3232,44 @@ const server = http.createServer((req, res) => {
             core: cfg.core || {},
             backgroundAgent: cfg.backgroundAgent || {},
             webhook: cfg.webhook || {},
-            hasCoreLicense: hasCoreLicenseCache()
+            hasCoreLicense: state.deskLicense.tier === 'premium'
         }))
         return
     }
     if (req.method === 'GET' && req.url === '/api/startup') {
-        res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify(getStartupState()))
+        jsonResponse(res, 200, startupManager.status())
         return
     }
     if (req.method === 'POST' && req.url === '/api/startup') {
         readApiBody(req, res, body => {
             const data = parseJson(body, null)
-            if (!data || typeof data.enable !== 'boolean') { res.writeHead(400); res.end(); return }
-            try { setStartup(data.enable); res.writeHead(204); res.end() }
-            catch (e) { res.writeHead(500); res.end(String(e.message)) }
+            if (!data || !['desk', 'agent'].includes(data.mode) || typeof data.enable !== 'boolean') {
+                jsonResponse(res, 400, { error: 'Invalid startup request' })
+                return
+            }
+            try {
+                if (data.mode === 'desk') {
+                    startupManager.setDeskEnabled(data.enable)
+                } else {
+                    if (data.enable && state.deskLicense.tier !== 'premium') {
+                        jsonResponse(res, 403, { error: 'An active Core license is required for remote access.' })
+                        return
+                    }
+                    startupManager.setAgentEnabled(data.enable)
+                    writeConfigPatch({
+                        backgroundAgent: {
+                            enabled: data.enable,
+                            allowDashboardAutostart: false,
+                            openConsole: false
+                        },
+                        core: { dashboardSync: data.enable }
+                    })
+                    if (!data.enable && agentApi) void agentApi.stopExistingAgent().catch(() => undefined)
+                }
+                jsonResponse(res, 200, startupManager.status())
+            } catch (error) {
+                jsonResponse(res, 500, { error: error.message })
+            }
         })
         return
     }
@@ -3157,7 +3289,10 @@ const server = http.createServer((req, res) => {
         return
     }
     if (req.method === 'GET' && req.url === '/api/account-storage') {
-        jsonResponse(res, 200, accountStorage.status())
+        jsonResponse(res, 200, {
+            ...accountStorage.status(),
+            disableConfirmation: os.userInfo().username
+        })
         return
     }
     if (req.method === 'POST' && req.url === '/api/account-storage') {
@@ -3166,7 +3301,12 @@ const server = http.createServer((req, res) => {
                 const data = parseJson(body, {})
                 let result
                 if (data.action === 'enable') result = accountStorage.enableEncryption()
-                else if (data.action === 'disable') result = accountStorage.disableEncryption()
+                else if (data.action === 'disable') {
+                    if (String(data.confirmation || '') !== os.userInfo().username) {
+                        throw new Error('Local-user confirmation did not match')
+                    }
+                    result = accountStorage.disableEncryption()
+                }
                 else if (data.action === 'rotate') result = accountStorage.rotateKey()
                 else if (data.action === 'export') {
                     const destination = data.destination
@@ -3189,7 +3329,7 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === 'GET' && req.url === '/api/plugins') {
         res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ plugins: readPluginsList(), hasCoreLicense: hasCoreLicenseCache() }))
+        res.end(JSON.stringify({ plugins: readPluginsList(), hasCoreLicense: state.deskLicense.tier === 'premium' }))
         return
     }
     if (req.method === 'POST' && req.url === '/api/plugins') {
@@ -3231,7 +3371,7 @@ const server = http.createServer((req, res) => {
     res.end('Not found')
 })
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '127.0.0.1', async () => {
     const address = server.address()
     const url = `http://127.0.0.1:${address.port}`
     try {
@@ -3242,6 +3382,8 @@ server.listen(PORT, '127.0.0.1', () => {
         pushLog('warn', `Account encryption could not be enabled: ${error.message}`)
     }
     prepareInitialRun()
+    await refreshAgentState()
+    setInterval(() => void refreshAgentState(), 900)
     if (process.env.MSRB_APP_NO_OPEN !== '1') openAppWindow(url)
 })
 

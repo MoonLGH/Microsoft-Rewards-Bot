@@ -7,8 +7,12 @@ const test = require('node:test')
 const {
     AgentRuntime,
     agentStatePath,
+    getAgentStatus,
     isAgentActive,
-    readAgentState
+    readAgentState,
+    requestAgentRun,
+    requestAgentStop,
+    subscribeToAgentLogs
 } = require('../dist/core/AgentRuntime')
 
 test('background agent IPC writes state, answers ping, and clears state on stop', async () => {
@@ -57,6 +61,49 @@ test('background agent ignores stale state from a different project root', async
         assert.equal(fs.existsSync(agentStatePath()), false)
         assert.equal(await isAgentActive(), false)
     } finally {
+        process.chdir(previousCwd)
+        fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+})
+
+test('Rewards Desk can request runs, receive logs, and stop through authenticated agent IPC', async () => {
+    const previousCwd = process.cwd()
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'msrb-agent-desk-'))
+    const runtime = new AgentRuntime()
+    let stopRequested = false
+    let finishRun
+
+    try {
+        process.chdir(tempDir)
+        runtime.setRunHandler(() => new Promise(resolve => { finishRun = resolve }))
+        runtime.setStopHandler(() => { stopRequested = true })
+        await runtime.start()
+
+        const logs = []
+        const unsubscribe = await subscribeToAgentLogs(log => logs.push(log))
+        assert.deepEqual(await requestAgentRun(), { accepted: true })
+        assert.equal((await getAgentStatus()).runState, 'running')
+        assert.equal((await requestAgentRun()).accepted, false)
+
+        runtime.publishLog({
+            time: new Date().toISOString(),
+            userName: 'MAIN',
+            level: 'info',
+            platform: 'MAIN',
+            title: 'TEST',
+            message: 'Desk received this log'
+        })
+        await new Promise(resolve => setTimeout(resolve, 30))
+        assert.equal(logs.at(-1).message, 'Desk received this log')
+
+        assert.equal(await requestAgentStop(), true)
+        assert.equal(stopRequested, true)
+        finishRun(0)
+        await new Promise(resolve => setTimeout(resolve, 30))
+        assert.equal((await getAgentStatus()).lastExitCode, 0)
+        unsubscribe()
+    } finally {
+        await runtime.stop().catch(() => undefined)
         process.chdir(previousCwd)
         fs.rmSync(tempDir, { recursive: true, force: true })
     }

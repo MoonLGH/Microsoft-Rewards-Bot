@@ -906,6 +906,10 @@ async function main(): Promise<void> {
     }
 
     const rewardsBot = new MicrosoftRewardsBot()
+    rewardsBot.agentRuntime.setRunHandler(() => runSingle(rewardsBot))
+    rewardsBot.agentRuntime.setStopHandler(() => {
+        rewardsBot.dashboardStopRequested = true
+    })
 
     process.on('beforeExit', () => {
         void rewardsBot.agentRuntime.stop()

@@ -25,10 +25,29 @@ interface AgentClient {
     mode: 'logs'
 }
 
+export interface AgentStatus {
+    active: boolean
+    pid?: number
+    runState: 'idle' | 'running'
+    lastExitCode?: number | null
+}
+
 export class AgentRuntime {
     private server: net.Server | null = null
     private clients = new Set<AgentClient>()
     private state: AgentRuntimeState | null = null
+    private runHandler: (() => Promise<number>) | null = null
+    private stopHandler: (() => void) | null = null
+    private runInFlight = false
+    private lastExitCode: number | null = null
+
+    setRunHandler(handler: () => Promise<number>): void {
+        this.runHandler = handler
+    }
+
+    setStopHandler(handler: () => void): void {
+        this.stopHandler = handler
+    }
 
     async start(): Promise<void> {
         if (this.server) return
@@ -116,12 +135,47 @@ export class AgentRuntime {
                 }
 
                 if (message.type === 'ping') {
-                    socket.write(JSON.stringify({ type: 'pong', pid: process.pid, cwd: process.cwd() }) + '\n')
+                    socket.write(
+                        JSON.stringify({
+                            type: 'pong',
+                            pid: process.pid,
+                            cwd: process.cwd(),
+                            runState: this.runInFlight ? 'running' : 'idle',
+                            lastExitCode: this.lastExitCode
+                        }) + '\n'
+                    )
                     socket.end()
                 } else if (message.type === 'attach') {
                     client = { socket, mode: 'logs' }
                     this.clients.add(client)
                     socket.write(JSON.stringify({ type: 'attached', pid: process.pid }) + '\n')
+                } else if (message.type === 'run_now') {
+                    if (!this.runHandler) {
+                        socket.write(JSON.stringify({ type: 'run_rejected', reason: 'Run handler unavailable' }) + '\n')
+                        socket.end()
+                    } else if (this.runInFlight) {
+                        socket.write(JSON.stringify({ type: 'run_rejected', reason: 'A run is already in progress' }) + '\n')
+                        socket.end()
+                    } else {
+                        this.runInFlight = true
+                        this.lastExitCode = null
+                        socket.write(JSON.stringify({ type: 'run_accepted', pid: process.pid }) + '\n')
+                        socket.end()
+                        void this.runHandler()
+                            .then(exitCode => {
+                                this.lastExitCode = exitCode
+                            })
+                            .catch(() => {
+                                this.lastExitCode = 1
+                            })
+                            .finally(() => {
+                                this.runInFlight = false
+                            })
+                    }
+                } else if (message.type === 'stop_after_current') {
+                    this.stopHandler?.()
+                    socket.write(JSON.stringify({ type: 'stop_accepted' }) + '\n')
+                    socket.end()
                 } else if (message.type === 'shutdown') {
                     socket.write(JSON.stringify({ type: 'shutdown_ack' }) + '\n')
                     setTimeout(() => process.kill(process.pid, 'SIGTERM'), 100)
@@ -160,6 +214,71 @@ export async function isAgentActive(state?: AgentRuntimeState | null): Promise<b
     }
 
     return active
+}
+
+export async function getAgentStatus(): Promise<AgentStatus> {
+    const state = await readAgentState()
+    if (!state) return { active: false, runState: 'idle' }
+    const response = await sendAgentMessage<{
+        type?: string
+        pid?: number
+        cwd?: string
+        runState?: 'idle' | 'running'
+        lastExitCode?: number | null
+    }>(state, { type: 'ping' }, 1000).catch(() => null)
+    if (response?.type !== 'pong' || response.pid !== state.pid || response.cwd !== state.cwd) {
+        return { active: false, runState: 'idle' }
+    }
+    return {
+        active: true,
+        pid: response.pid,
+        runState: response.runState === 'running' ? 'running' : 'idle',
+        lastExitCode: response.lastExitCode
+    }
+}
+
+export async function requestAgentRun(): Promise<{ accepted: boolean; reason?: string }> {
+    const state = await readAgentState()
+    if (!state || !(await isAgentActive(state))) return { accepted: false, reason: 'No active Core agent' }
+    const response = await sendAgentMessage<{ type?: string; reason?: string }>(state, { type: 'run_now' }, 1500)
+    return response?.type === 'run_accepted'
+        ? { accepted: true }
+        : { accepted: false, reason: response?.reason || 'The Core agent rejected the run' }
+}
+
+export async function requestAgentStop(): Promise<boolean> {
+    const state = await readAgentState()
+    if (!state || !(await isAgentActive(state))) return false
+    const response = await sendAgentMessage<{ type?: string }>(state, { type: 'stop_after_current' }, 1500)
+    return response?.type === 'stop_accepted'
+}
+
+export async function subscribeToAgentLogs(
+    onLog: (log: DashboardLog) => void,
+    onClose?: () => void
+): Promise<() => void> {
+    const state = await readAgentState()
+    if (!state || !(await isAgentActive(state))) throw new Error('No active Core agent')
+
+    const socket = net.connect({ host: '127.0.0.1', port: state.port })
+    socket.setEncoding('utf8')
+    let buffer = ''
+    socket.on('connect', () => {
+        socket.write(JSON.stringify({ token: state.token, type: 'attach' }) + '\n')
+    })
+    socket.on('data', chunk => {
+        buffer += chunk
+        let newline = buffer.indexOf('\n')
+        while (newline >= 0) {
+            const line = buffer.slice(0, newline)
+            buffer = buffer.slice(newline + 1)
+            const message = parseJson<{ type?: string; log?: DashboardLog }>(line)
+            if (message?.type === 'log' && message.log) onLog(message.log)
+            newline = buffer.indexOf('\n')
+        }
+    })
+    socket.on('close', () => onClose?.())
+    return () => socket.destroy()
 }
 
 export async function stopExistingAgent(): Promise<boolean> {

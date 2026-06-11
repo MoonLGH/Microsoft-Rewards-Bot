@@ -12,6 +12,12 @@ const FORBIDDEN_EXTENSIONS = new Set(['.ts', '.tsx', '.map', '.env', '.pem', '.k
 const FORBIDDEN_NAMES = new Set(['.env', '.env.local', '.env.production'])
 const ALLOWED_JS_FILES = new Set(['index.js'])
 const ALLOWED_TOP_LEVEL_CORE_FILES = new Set(['index.js', 'package.json', 'package-lock.json', 'LICENSE'])
+const FORBIDDEN_BYTECODE_MARKERS = [
+    '__MSRB_RELEASE_DASHBOARD_CLIENT_SECRET__',
+    'MSRB_RELEASE_DASHBOARD_CLIENT_SECRET',
+    'CORE_DASHBOARD_CLIENT_SECRET',
+    '.env.dashboard.local'
+]
 const REQUIRED_TARGETS = new Set([
     'win32-x64-node-24.15.0',
     'linux-x64-node-24.15.0',
@@ -24,6 +30,15 @@ function readJson(filePath) {
 
 function sha256(filePath) {
     return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
+}
+
+function assertNoForbiddenBytecodeMarkers(filePath, label) {
+    const artifact = fs.readFileSync(filePath)
+    for (const marker of FORBIDDEN_BYTECODE_MARKERS) {
+        if (artifact.includes(Buffer.from(marker))) {
+            fail(`${label} contains forbidden release marker ${marker}`)
+        }
+    }
 }
 
 function walk(dir, base = dir) {
@@ -152,6 +167,7 @@ function main() {
             assertTargetMetadata(targetId, target, 'plugins/official-core.json')
             assertTargetMetadata(targetId, packageTargets[targetId] || {}, 'plugins/core/package.json')
             assertTargetMetadata(targetId, catalogTargets[targetId] || {}, 'plugins/catalog.json')
+            assertNoForbiddenBytecodeMarkers(indexJsc, `plugins/core/targets/${targetId}/index.jsc`)
             const actualHash = sha256(indexJsc)
             if (target.indexSha256 !== actualHash) {
                 fail(`plugins/official-core.json ${targetId} indexSha256 does not match the target bytecode`)
@@ -175,6 +191,7 @@ function main() {
             return
         }
 
+        assertNoForbiddenBytecodeMarkers(indexJsc, 'plugins/core/index.jsc')
         const actualHash = sha256(indexJsc)
         if (officialCore.indexSha256 !== actualHash) {
             fail('plugins/official-core.json indexSha256 does not match plugins/core/index.jsc')
