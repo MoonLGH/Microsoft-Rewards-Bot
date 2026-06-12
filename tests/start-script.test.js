@@ -1,4 +1,5 @@
 const assert = require('assert/strict')
+const { EventEmitter } = require('events')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -23,6 +24,10 @@ test('background launch skips updater unless explicitly enabled', () => {
         startScript.shouldRunUpdater(['node', 'scripts/start.js', '--background'], { MSRB_BACKGROUND_UPDATE: '1' }),
         true
     )
+    assert.equal(
+        startScript.shouldRunUpdater(['node', 'scripts/start.js'], { MSRB_POST_UPDATE_RESTART: '1' }),
+        false
+    )
 })
 
 test('background launch reuses dist when available and builds only when missing', () => {
@@ -38,9 +43,45 @@ test('background launch reuses dist when available and builds only when missing'
         assert.equal(startScript.hasBuiltRuntime(root), true)
         assert.equal(startScript.shouldBuildRuntime(['node', 'scripts/start.js', '--background'], root), false)
         assert.equal(startScript.shouldBuildRuntime(['node', 'scripts/start.js'], root), true)
+        assert.equal(
+            startScript.shouldBuildRuntime(
+                ['node', 'scripts/start.js', '--background'],
+                root,
+                { MSRB_POST_UPDATE_RESTART: '1' }
+            ),
+            true
+        )
     } finally {
         fs.rmSync(root, { recursive: true, force: true })
     }
+})
+
+test('successful auto-update restarts once with the post-update guard', () => {
+    let captured = null
+    const child = new EventEmitter()
+    child.unrefCalled = false
+    child.unref = () => {
+        child.unrefCalled = true
+    }
+
+    const spawn = (command, args, options) => {
+        captured = { command, args, options }
+        return child
+    }
+
+    const result = startScript.launchPostUpdateRestart(
+        ['node', 'scripts/start.js', '--terminal'],
+        { EXISTING: '1' },
+        spawn
+    )
+
+    assert.equal(result, child)
+    assert.equal(captured.command, process.execPath)
+    assert.deepEqual(captured.args, ['scripts/start.js', '--terminal'])
+    assert.equal(captured.options.detached, true)
+    assert.equal(captured.options.env.EXISTING, '1')
+    assert.equal(captured.options.env.MSRB_POST_UPDATE_RESTART, '1')
+    assert.equal(child.unrefCalled, true)
 })
 
 test('start script resolves npm from portable Node runtime before global npm', () => {

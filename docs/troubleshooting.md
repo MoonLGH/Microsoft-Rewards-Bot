@@ -16,6 +16,11 @@ The updater reads the latest GitHub Release, verifies its Ed25519 manifest, comp
 signed version with `package.json` at the signed commit, and downloads that exact commit.
 An unsigned or incomplete release is rejected.
 
+If the log says `Latest GitHub release is missing its signed update manifest`, the
+published GitHub Release is incomplete. Maintainers must publish both
+`update-manifest.json` and `update-manifest.sig`; users should not bypass signature
+verification or replace the updater with a mutable `main` download.
+
 Use:
 
 ```bash
@@ -29,6 +34,10 @@ Docker never applies updates inside the container. If Docker logs that an update
 If another terminal started an update at the same time, the updater waits on `.updates/update.lock`. If the lock is still active after the wait window, the bot continues with the local version instead of mutating a half-updated tree. Stale locks from crashed update processes are removed automatically.
 
 Use `npm run update:repair` when the installed files look inconsistent but the local `package.json` version already matches the remote `main` version. Repair mode re-applies the current official commit while preserving `src/config.json`, `src/accounts.json`, `plugins/plugins.jsonc`, sessions, logs, diagnostics, and custom plugin folders.
+
+After a successful update or repair, the launcher automatically restarts once, rebuilds
+`dist/`, and starts the new version. A second update check is skipped during this
+one-shot restart to prevent a loop.
 
 ## App Window Or Terminal
 

@@ -2,9 +2,11 @@ name: Auto Release on package.json version bump
 
 on:
     push:
-        branches: [release]
+        branches: [main]
         paths:
             - package.json
+            - package-lock.json
+    workflow_dispatch:
 
 permissions:
     contents: write

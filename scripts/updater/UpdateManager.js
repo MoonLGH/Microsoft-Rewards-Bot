@@ -514,7 +514,7 @@ class UpdateManager {
         }
 
         const force = this.shouldForceUpdate(options, env, argv)
-        this.logger.log(`[UPDATER] Checking ${this.repo}#${this.branch}`)
+        this.logger.log(`[UPDATER] Checking signed releases for ${this.repo}`)
 
         try {
             const remote = await this.fetchRemoteRelease()

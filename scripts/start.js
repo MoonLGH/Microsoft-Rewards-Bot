@@ -101,6 +101,7 @@ function shouldLaunchInterface(argv = process.argv, env = process.env, root = RO
 }
 
 function shouldRunUpdater(argv = process.argv, env = process.env) {
+    if (env.MSRB_POST_UPDATE_RESTART === '1') return false
     if (!isBackgroundLaunch(argv)) return true
     return env.MSRB_BACKGROUND_UPDATE === '1'
 }
@@ -109,7 +110,8 @@ function hasBuiltRuntime(root = ROOT) {
     return fs.existsSync(path.join(root, 'dist', 'index.js')) && fs.existsSync(path.join(root, 'dist', 'package.json'))
 }
 
-function shouldBuildRuntime(argv = process.argv, root = ROOT) {
+function shouldBuildRuntime(argv = process.argv, root = ROOT, env = process.env) {
+    if (env.MSRB_POST_UPDATE_RESTART === '1') return true
     if (!isBackgroundLaunch(argv)) return true
     return !hasBuiltRuntime(root)
 }
@@ -131,6 +133,21 @@ function launchAppWindow() {
         }
     })
     child.unref()
+}
+
+function launchPostUpdateRestart(argv = process.argv, env = process.env, spawn = childProcess.spawn) {
+    const child = spawn(process.execPath, argv.slice(1), {
+        cwd: ROOT,
+        detached: true,
+        stdio: 'inherit',
+        windowsHide: false,
+        env: {
+            ...env,
+            MSRB_POST_UPDATE_RESTART: '1'
+        }
+    })
+    child.unref()
+    return child
 }
 
 async function deskCommand(action) {
@@ -179,12 +196,21 @@ async function main() {
 
     if (shouldRunUpdater()) {
         const updater = new UpdateManager()
-        await updater.run()
+        const updateResult = await updater.run()
+        if (updateResult.status === 'updated') {
+            console.log('[START] Update applied. Restarting with the new version...')
+            launchPostUpdateRestart()
+            return
+        }
     } else {
-        console.log('[START] Background launch: skipping update check. Set MSRB_BACKGROUND_UPDATE=1 to enable it.')
+        console.log(
+            process.env.MSRB_POST_UPDATE_RESTART === '1'
+                ? '[START] Post-update restart: using the newly installed version.'
+                : '[START] Background launch: skipping update check. Set MSRB_BACKGROUND_UPDATE=1 to enable it.'
+        )
     }
 
-    if (shouldBuildRuntime()) {
+    if (shouldBuildRuntime(process.argv, ROOT, process.env)) {
         runNpm(['run', 'build'])
     } else {
         console.log('[START] Background launch: using existing dist build.')
@@ -212,6 +238,7 @@ module.exports = {
     isDockerRuntime,
     isTerminalForced,
     isUiChild,
+    launchPostUpdateRestart,
     readConfig,
     resolveNpmInvocation,
     shouldBuildRuntime,

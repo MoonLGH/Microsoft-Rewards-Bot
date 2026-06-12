@@ -54,9 +54,10 @@ npm run core:release-check
 Every target checksum in `plugins/official-core.json`, `plugins/core/package.json`, and `plugins/catalog.json` must match the bytecode file for that target.
 The Darwin compatibility target must declare `compatibleArtifactSource: "linux-x64-node-24.15.0"` and remain byte-for-byte identical to that source.
 
-5. Commit the final release code, then publish it through the release workflow.
+5. Commit the final release code and version bump to `main`.
 
-The workflow signs `update-manifest.json` with Ed25519 and uploads it together with
+The workflow watches version changes on `main`, signs `update-manifest.json` with
+Ed25519, creates the matching `v<version>` GitHub Release, and uploads it together with
 `update-manifest.sig`. The manifest binds the repository, version, tag, and exact commit
 SHA. Git installs fetch the signed tag; archive installs download the immutable tarball for
 the same signed commit SHA.
@@ -74,6 +75,7 @@ Expected result:
 - local and remote versions are printed;
 - the signed release commit SHA is printed;
 - successful non-Docker updates print the apply strategy;
+- successful non-Docker updates restart the launcher once and rebuild the new runtime;
 - failed local version verification reports `Update verification failed` instead of claiming success;
 - Core checksum values match;
 - Core release artifact check passes;
@@ -109,3 +111,5 @@ Managed project paths are mirrored from Git or the release archive before copy. 
 - Do not claim Windows, Linux, Docker, or ARM64 support unless the matching official target artifact is present.
 - Do not publish a release without both `update-manifest.json` and `update-manifest.sig`.
 - Do not commit either private signing key.
+- Do not move release automation back to a branch that is not part of the normal
+  publication flow. The supported release branch is `main`.

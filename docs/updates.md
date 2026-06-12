@@ -35,9 +35,15 @@ The update flow is:
 8. remove obsolete files from managed project paths;
 9. preserve and migrate user files;
 10. verify that the local `package.json` now matches the signed version;
-11. run `npm ci` or `npm install`.
+11. run `npm ci` or `npm install`;
+12. restart the launcher once with an internal guard;
+13. rebuild `dist/` from the newly installed source and start the new version.
 
 The updater does not report `Updated` unless the version on disk matches the remote version after the apply step.
+
+After a successful non-Docker update, the current launcher exits and starts a fresh
+launcher process automatically. The restart skips a second update check, rebuilds the
+runtime from the new source, and then opens the normal app window or terminal mode.
 
 The updater does not trust a mutable branch or an unsigned version file. Missing or invalid
 release signatures fail closed.
@@ -109,6 +115,7 @@ Useful environment variables:
 - `MSRB_UPDATE_STRATEGY=archive`: force archive download mode.
 - `MSRB_UPDATE_REPO=QuestPilot/Microsoft-Rewards-Bot`: override the GitHub repo.
 - `MSRB_UPDATE_BRANCH=main`: legacy branch name used only by unsigned test fixtures and compatibility paths.
+- `MSRB_POST_UPDATE_RESTART=1`: internal one-shot restart guard; users should not set it manually.
 
 ## Manual Install From Git
 
