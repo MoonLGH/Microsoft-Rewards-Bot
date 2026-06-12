@@ -4,6 +4,7 @@ const path = require('path')
 const semver = require('semver')
 
 const { UpdateManager } = require('./updater/UpdateManager')
+const { readPublicKey, verifySignedBytes } = require('./security/SignedManifest')
 
 const ROOT = path.resolve(__dirname, '..')
 
@@ -105,6 +106,11 @@ function actionForUpdateResult(result) {
 }
 
 function verifyCoreArtifact(officialCore, catalog) {
+    verifySignedBytes(
+        fs.readFileSync(path.join(ROOT, 'plugins', 'official-core.json')),
+        fs.readFileSync(path.join(ROOT, 'plugins', 'official-core.sig'), 'utf8'),
+        readPublicKey(path.join(ROOT, 'scripts', 'security', 'core-public-key.pem'))
+    )
     const catalogCore = catalog.plugins.find(plugin => plugin.name === 'core')
     if (officialCore.targets) {
         if (!catalogCore?.targets) {
@@ -150,7 +156,7 @@ async function main() {
     console.log(`[UPDATE-DOCTOR] bot version: ${packageJson.version}`)
     console.log(`[UPDATE-DOCTOR] node runtime: ${process.version} (required ${packageJson.engines?.node || 'unspecified'})`)
     console.log(`[UPDATE-DOCTOR] docker runtime: ${formatBool(isDocker)}`)
-    console.log(`[UPDATE-DOCTOR] update source: ${updater.repo}#${updater.branch}`)
+    console.log(`[UPDATE-DOCTOR] update source: signed latest release from ${updater.repo}`)
     console.log(`[UPDATE-DOCTOR] plugin config: ${pluginConfig.exists ? 'plugins/plugins.jsonc' : 'missing'}`)
     console.log(`[UPDATE-DOCTOR] core plugin enabled: ${formatBool(pluginConfig.coreEnabled)}`)
     if (pluginConfig.error) {
@@ -175,7 +181,7 @@ async function main() {
             ? { status: 'update-available', remote, docker: isDocker }
             : { status: 'current', remote }
         if (remote) {
-            console.log(`[UPDATE-DOCTOR] remote update branch SHA: ${remote.commitSha}`)
+            console.log(`[UPDATE-DOCTOR] signed release commit SHA: ${remote.commitSha}`)
             console.log(`[UPDATE-DOCTOR] remote package version: ${remote.version}`)
         }
         console.log(`[UPDATE-DOCTOR] update status: ${updateResult.status}`)

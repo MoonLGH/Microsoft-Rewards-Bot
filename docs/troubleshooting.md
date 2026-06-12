@@ -12,7 +12,9 @@ Navigation: [Documentation index](./README.md) -> [Install and auto-updates](./u
 
 The bot logs the update error and continues with the local version when GitHub is unavailable.
 
-The updater reads the `main` branch, compares `package.json`, and downloads the immutable tarball for that exact commit. It no longer uses `updates/stable.json` or signed manifests.
+The updater reads the latest GitHub Release, verifies its Ed25519 manifest, compares the
+signed version with `package.json` at the signed commit, and downloads that exact commit.
+An unsigned or incomplete release is rejected.
 
 Use:
 

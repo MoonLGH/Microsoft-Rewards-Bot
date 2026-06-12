@@ -5,6 +5,8 @@ const path = require('path')
 const ROOT = path.resolve(__dirname, '..')
 const CORE_DIR = path.join(ROOT, 'plugins', 'core')
 const OFFICIAL_CORE_PATH = path.join(ROOT, 'plugins', 'official-core.json')
+const OFFICIAL_CORE_SIGNATURE_PATH = path.join(ROOT, 'plugins', 'official-core.sig')
+const CORE_PUBLIC_KEY_PATH = path.join(ROOT, 'scripts', 'security', 'core-public-key.pem')
 const CATALOG_PATH = path.join(ROOT, 'plugins', 'catalog.json')
 const CORE_API_POLICY_PATH = path.resolve(ROOT, '..', 'Core-API', 'config', 'core-version-policy.json')
 
@@ -131,7 +133,13 @@ function main() {
         }
     }
 
-    const officialCore = readJson(OFFICIAL_CORE_PATH)
+    const manifestPayload = fs.readFileSync(OFFICIAL_CORE_PATH)
+    const signature = Buffer.from(fs.readFileSync(OFFICIAL_CORE_SIGNATURE_PATH, 'utf8').trim(), 'base64')
+    const publicKey = crypto.createPublicKey(fs.readFileSync(CORE_PUBLIC_KEY_PATH, 'utf8'))
+    if (signature.length !== 64 || publicKey.asymmetricKeyType !== 'ed25519' || !crypto.verify(null, manifestPayload, publicKey, signature)) {
+        fail('plugins/official-core.json signature verification failed')
+    }
+    const officialCore = JSON.parse(manifestPayload.toString('utf8'))
     const catalog = readJson(CATALOG_PATH)
     const catalogCore = Array.isArray(catalog.plugins) ? catalog.plugins.find(plugin => plugin.name === 'core') : null
     const targets = officialCore.targets || corePackage.msrb?.targets || null

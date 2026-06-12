@@ -12,7 +12,9 @@ This page documents how the official Core plugin behaves, what it covers, and ho
 
 The public bot repository is source-available, but the official Core plugin is proprietary and requires a paid license.
 
-Core is preinstalled in `plugins/core`, shipped as a compiled official artifact, and trusted only when its checksum matches `plugins/official-core.json`.
+Core is preinstalled in `plugins/core` and shipped as a compiled official artifact. The
+bot trusts it only when the Ed25519 signature of `plugins/official-core.json` is valid and
+the selected runtime bytecode checksum matches the signed manifest.
 
 See [Core release integrity](./core-release-security.md) for public anti-leak and checksum rules.
 
@@ -132,5 +134,6 @@ Before copying a new Core build into the public repo:
 - copy only bytecode, package, and license artifacts;
 - update the Core API `required_core_version` to the published Core version, and keep `minimum_core_version` aligned unless a deliberate compatibility window is being run;
 - verify that `plugins/official-core.json` matches every shipped Core target artifact;
+- verify that `plugins/official-core.sig` validates with the pinned Core public key;
 - verify that no `.ts`, `.map`, source `dist/**/*.js`, `.env`, or private secret was copied into the public repository;
 - run the checks in [Dashboard testing](./dashboard-testing.md).

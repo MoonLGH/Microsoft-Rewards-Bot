@@ -1,16 +1,19 @@
-# Release Update Checklist
+# Signed Release Update Checklist
 
-This guide covers the files that make `npm start` detect, apply, and verify a public update.
+This guide covers the files that make `npm start` detect, authenticate, apply, and verify a public update.
 
 ## Goal
 
-Publish the `main` branch so existing local installs can detect a higher `package.json` version, apply that exact commit through Git or the immutable commit archive, preserve user files, replace managed project files, and verify that the local `package.json` actually changed.
+Publish a GitHub Release containing a signed manifest. Existing installs verify the
+manifest, then apply the exact signed commit through Git or the immutable commit archive,
+preserve user files, replace managed project files, and verify the installed version.
 
 ## Required Environment
 
 - Node.js `24.15.0`
 - access to rebuild the official Core plugin when Core changes
-- write access to the official `main` branch
+- write access to the official release branch and GitHub Releases
+- the GitHub Actions secret `MSRB_UPDATE_SIGNING_KEY`
 
 Read [Core release integrity](./core-release-security.md) before publishing a Core artifact. It defines the public anti-leak and checksum rules.
 
@@ -26,8 +29,9 @@ npm test
 npm run test:dashboard:mock
 npm audit --audit-level=moderate
 npm run core:release-check
-npm run update:doctor
 ```
+
+`update:doctor` can only validate the remote channel after the signed GitHub Release exists.
 
 2. Rebuild the official Core plugin with the private maintainer release pipeline when Core changed.
 
@@ -50,9 +54,12 @@ npm run core:release-check
 Every target checksum in `plugins/official-core.json`, `plugins/core/package.json`, and `plugins/catalog.json` must match the bytecode file for that target.
 The Darwin compatibility target must declare `compatibleArtifactSource: "linux-x64-node-24.15.0"` and remain byte-for-byte identical to that source.
 
-5. Commit and push the final release code to the `main` branch.
+5. Commit the final release code, then publish it through the release workflow.
 
-The updater reads `package.json` directly from `main`, then applies that exact branch commit. Git installs use `fetch` plus `reset --hard`; archive installs download the immutable tarball for the same commit SHA. There is no second manifest commit.
+The workflow signs `update-manifest.json` with Ed25519 and uploads it together with
+`update-manifest.sig`. The manifest binds the repository, version, tag, and exact commit
+SHA. Git installs fetch the signed tag; archive installs download the immutable tarball for
+the same signed commit SHA.
 
 6. Validate after push.
 
@@ -65,7 +72,7 @@ npm run update:doctor
 Expected result:
 
 - local and remote versions are printed;
-- the main branch SHA is printed;
+- the signed release commit SHA is printed;
 - successful non-Docker updates print the apply strategy;
 - failed local version verification reports `Update verification failed` instead of claiming success;
 - Core checksum values match;
@@ -100,4 +107,5 @@ Managed project paths are mirrored from Git or the release archive before copy. 
 - Do not publish Core `.ts`, sourcemap, or unobfuscated Core `dist/**/*.js` files.
 - Do not rebuild Core bytecode with another Node.js version.
 - Do not claim Windows, Linux, Docker, or ARM64 support unless the matching official target artifact is present.
-- Do not rely on `updates/stable.json` or signed update manifests for the public channel.
+- Do not publish a release without both `update-manifest.json` and `update-manifest.sig`.
+- Do not commit either private signing key.

@@ -1,6 +1,6 @@
 {
     "name":  "microsoft-rewards-bot-core",
-    "version":  "1.0.5",
+    "version":  "2.0.0",
     "description":  "Official Core plugin for Microsoft Rewards Bot",
     "author":  "LightZirconite",
     "license":  "SEE LICENSE IN LICENSE",
@@ -14,7 +14,7 @@
                  "releaseShape":  "single-entry-bytecode",
                  "targets":  {
                                  "win32-x64-node-24.15.0":  {
-                                                                "indexSha256":  "ce5352b737e23198c5a927c4fe39d6092c1fe9bc3e02e5c0d80b14e5a9f570e5",
+                                                                "indexSha256":  "dbd371f2fbbee0df45496f78ed07de4ddc65dae1bac0be0a41cd2f65712d7544",
                                                                 "bytecodeTarget":  {
                                                                                        "node":  "24.15.0",
                                                                                        "platform":  "win32",
@@ -22,7 +22,7 @@
                                                                                    }
                                                             },
                                  "linux-x64-node-24.15.0":  {
-                                                                "indexSha256":  "7fda17d5407661fe3c8022a06cfd7b46639281447753cfdeab2315f5388ed3eb",
+                                                                "indexSha256":  "dc2e28a0ee269281ceb3c45b091814c7603d4297f392535a0752b1e31bb51d17",
                                                                 "bytecodeTarget":  {
                                                                                        "node":  "24.15.0",
                                                                                        "platform":  "linux",
@@ -30,7 +30,7 @@
                                                                                    }
                                                             },
                                  "linux-arm64-node-24.15.0":  {
-                                                                  "indexSha256":  "7765715c9ab3b40c4b8dc9e627f3bb1339486cf45427d827a7d2e7538ec992e7",
+                                                                  "indexSha256":  "fc0a6aba680a762cb7423b99531df01cc020963908b1a61a65ef0c2d18a20736",
                                                                   "bytecodeTarget":  {
                                                                                          "node":  "24.15.0",
                                                                                          "platform":  "linux",
@@ -38,14 +38,14 @@
                                                                                      }
                                                               },
                                  "darwin-x64-node-24.15.0":  {
-                                                                "indexSha256":  "7fda17d5407661fe3c8022a06cfd7b46639281447753cfdeab2315f5388ed3eb",
-                                                                "bytecodeTarget":  {
-                                                                                       "node":  "24.15.0",
-                                                                                       "platform":  "darwin",
-                                                                                       "arch":  "x64"
-                                                                                   },
-                                                                "compatibleArtifactSource":  "linux-x64-node-24.15.0"
-                                                              }
+                                                                 "indexSha256":  "dc2e28a0ee269281ceb3c45b091814c7603d4297f392535a0752b1e31bb51d17",
+                                                                 "bytecodeTarget":  {
+                                                                                        "node":  "24.15.0",
+                                                                                        "platform":  "darwin",
+                                                                                        "arch":  "x64"
+                                                                                    },
+                                                                 "compatibleArtifactSource":  "linux-x64-node-24.15.0"
+                                                             }
                              }
              },
     "dependencies":  {

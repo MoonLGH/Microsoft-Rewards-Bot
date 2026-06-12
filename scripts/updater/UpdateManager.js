@@ -6,9 +6,20 @@ const path = require('path')
 const { URL } = require('url')
 
 const { migrateUserFiles } = require('./ConfigMigrator')
+const { readPublicKey, verifySignedBytes } = require('../security/SignedManifest')
 
 const DEFAULT_REPO = 'QuestPilot/Microsoft-Rewards-Bot'
 const DEFAULT_BRANCH = 'main'
+const UPDATE_MANIFEST_ASSET = 'update-manifest.json'
+const UPDATE_SIGNATURE_ASSET = 'update-manifest.sig'
+const UPDATE_PUBLIC_KEY_PATH = path.resolve(__dirname, '..', 'security', 'update-public-key.pem')
+const ALLOWED_UPDATE_HOSTS = new Set([
+    'api.github.com',
+    'github.com',
+    'objects.githubusercontent.com',
+    'release-assets.githubusercontent.com',
+    'codeload.github.com'
+])
 
 const DEFAULT_EXCLUDES = [
     '.git',
@@ -53,6 +64,7 @@ const DEFAULT_MANAGED_PATHS = [
     'plugins/core',
     'plugins/catalog.json',
     'plugins/official-core.json',
+    'plugins/official-core.sig',
     'scripts',
     'src',
     'tests',
@@ -307,7 +319,18 @@ function pruneManagedEntry(source, target, relativePath, excludes, targetRoot) {
     }
 }
 
-function requestBuffer(url, timeoutMs = 45_000, headers = {}) {
+function assertAllowedUpdateUrl(url) {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' || !ALLOWED_UPDATE_HOSTS.has(parsed.hostname.toLowerCase())) {
+        throw new Error(`Updater refused untrusted URL: ${parsed.protocol}//${parsed.host}`)
+    }
+}
+
+function requestBuffer(url, timeoutMs = 45_000, headers = {}, options = {}) {
+    const redirects = options.redirects ?? 0
+    const maxRedirects = options.maxRedirects ?? 5
+    const maxBytes = options.maxBytes ?? 2 * 1024 * 1024
+    assertAllowedUpdateUrl(url)
     return new Promise((resolve, reject) => {
         const request = https.get(url, {
             timeout: timeoutMs,
@@ -320,12 +343,28 @@ function requestBuffer(url, timeoutMs = 45_000, headers = {}) {
         }, response => {
             if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
                 response.resume()
-                requestBuffer(new URL(response.headers.location, url).toString(), timeoutMs, headers).then(resolve, reject)
+                if (redirects >= maxRedirects) {
+                    reject(new Error(`Too many redirects while requesting ${url}`))
+                    return
+                }
+                requestBuffer(new URL(response.headers.location, url).toString(), timeoutMs, headers, {
+                    ...options,
+                    redirects: redirects + 1
+                }).then(resolve, reject)
                 return
             }
 
             const chunks = []
-            response.on('data', chunk => chunks.push(chunk))
+            let received = 0
+            response.on('error', reject)
+            response.on('data', chunk => {
+                received += chunk.length
+                if (received > maxBytes) {
+                    response.destroy(new Error(`Response exceeded ${maxBytes} bytes: ${url}`))
+                    return
+                }
+                chunks.push(chunk)
+            })
             response.on('end', () => {
                 const body = Buffer.concat(chunks)
                 if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -355,6 +394,10 @@ async function requestText(url, timeoutMs = 20_000, headers = {}) {
 }
 
 function download(url, dest, timeoutMs = 45_000, options = {}) {
+    const redirects = options.redirects ?? 0
+    const maxRedirects = options.maxRedirects ?? 5
+    const maxBytes = options.maxBytes ?? 512 * 1024 * 1024
+    assertAllowedUpdateUrl(url)
     return new Promise((resolve, reject) => {
         mkdirp(path.dirname(dest))
         const file = fs.createWriteStream(dest)
@@ -369,7 +412,14 @@ function download(url, dest, timeoutMs = 45_000, options = {}) {
             if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
                 file.close()
                 rmrf(dest)
-                download(new URL(response.headers.location, url).toString(), dest, timeoutMs, options).then(resolve, reject)
+                if (redirects >= maxRedirects) {
+                    reject(new Error(`Too many redirects while downloading ${url}`))
+                    return
+                }
+                download(new URL(response.headers.location, url).toString(), dest, timeoutMs, {
+                    ...options,
+                    redirects: redirects + 1
+                }).then(resolve, reject)
                 return
             }
 
@@ -380,6 +430,18 @@ function download(url, dest, timeoutMs = 45_000, options = {}) {
                 return
             }
 
+            let received = 0
+            response.on('data', chunk => {
+                received += chunk.length
+                if (received > maxBytes) {
+                    response.destroy(new Error(`Download exceeded ${maxBytes} bytes: ${url}`))
+                }
+            })
+            response.on('error', error => {
+                file.close()
+                rmrf(dest)
+                reject(error)
+            })
             response.pipe(file)
             file.on('finish', () => file.close(resolve))
         })
@@ -508,25 +570,49 @@ class UpdateManager {
     }
 
     async fetchRemoteRelease() {
-        const branchUrl = this.githubApiUrl(`/repos/${this.repo}/branches/${encodeURIComponent(this.branch)}`)
-        const branch = await requestJson(branchUrl)
-        const commitSha = branch?.commit?.sha
-        if (!commitSha || typeof commitSha !== 'string') {
-            throw new Error(`GitHub branch ${this.branch} did not return a commit SHA`)
+        const release = await requestJson(this.githubApiUrl(`/repos/${this.repo}/releases/latest`))
+        const assets = Array.isArray(release?.assets) ? release.assets : []
+        const manifestAsset = assets.find(asset => asset?.name === UPDATE_MANIFEST_ASSET)
+        const signatureAsset = assets.find(asset => asset?.name === UPDATE_SIGNATURE_ASSET)
+        if (!manifestAsset?.browser_download_url || !signatureAsset?.browser_download_url) {
+            throw new Error('Latest GitHub release is missing its signed update manifest')
         }
 
+        const [manifestPayload, signaturePayload] = await Promise.all([
+            requestBuffer(manifestAsset.browser_download_url, 20_000, {}, { maxBytes: 64 * 1024 }),
+            requestBuffer(signatureAsset.browser_download_url, 20_000, {}, { maxBytes: 1024 })
+        ])
+        verifySignedBytes(manifestPayload, signaturePayload.toString('utf8'), readPublicKey(UPDATE_PUBLIC_KEY_PATH))
+
+        const manifest = JSON.parse(manifestPayload.toString('utf8'))
+        if (
+            manifest.schema !== 1 ||
+            manifest.repo !== this.repo ||
+            !/^[a-f0-9]{40}$/i.test(manifest.commitSha || '') ||
+            typeof manifest.version !== 'string' ||
+            typeof manifest.tag !== 'string'
+        ) {
+            throw new Error('Signed update manifest is invalid')
+        }
+        if (release.tag_name !== manifest.tag) {
+            throw new Error(`Signed update tag ${manifest.tag} does not match GitHub release ${release.tag_name}`)
+        }
+
+        const commitSha = manifest.commitSha
         const packageUrl = this.githubApiUrl(`/repos/${this.repo}/contents/package.json?ref=${commitSha}`)
         const packageSource = await requestText(packageUrl, 20_000, { accept: 'application/vnd.github.raw' })
         const packageJson = JSON.parse(packageSource)
-        if (!packageJson.version || typeof packageJson.version !== 'string') {
-            throw new Error('Remote package.json does not contain a version')
+        if (packageJson.version !== manifest.version) {
+            throw new Error(`Signed update version ${manifest.version} does not match package.json ${packageJson.version || 'unknown'}`)
         }
 
         return {
-            version: packageJson.version,
+            version: manifest.version,
             commitSha,
             branch: this.branch,
             repo: this.repo,
+            tag: manifest.tag,
+            signed: true,
             packageJson,
             archiveUrl: this.githubApiUrl(`/repos/${this.repo}/tarball/${commitSha}`),
             checkedAt: new Date().toISOString()
@@ -708,21 +794,27 @@ class UpdateManager {
     }
 
     async applyGitRelease(remote) {
-        assertSafeBranchName(this.branch)
+        const signedTag = remote.signed ? remote.tag : null
+        assertSafeBranchName(signedTag || this.branch)
 
         const stamp = new Date().toISOString().replace(/[:.]/g, '-')
         const backupDir = path.join(this.updatesDir, stamp, 'backup')
         mkdirp(backupDir)
 
         const before = this.git(['rev-parse', 'HEAD']).trim()
-        const remoteRef = `refs/remotes/origin/${this.branch}`
+        const remoteRef = signedTag
+            ? `refs/msrb-update/${signedTag}`
+            : `refs/remotes/origin/${this.branch}`
+        const fetchRef = signedTag
+            ? `+refs/tags/${signedTag}:${remoteRef}`
+            : `+refs/heads/${this.branch}:${remoteRef}`
 
         this.logger.log(`[UPDATER] Applying update with Git reset to ${remote.commitSha.slice(0, 12)}`)
         this.backupMutablePaths(backupDir)
 
         try {
-            this.git(['fetch', '--prune', 'origin', `+refs/heads/${this.branch}:${remoteRef}`], { stdio: 'pipe' })
-            const fetchedSha = this.git(['rev-parse', remoteRef]).trim()
+            this.git(['fetch', '--prune', 'origin', fetchRef], { stdio: 'pipe' })
+            const fetchedSha = this.git(['rev-parse', `${remoteRef}^{commit}`]).trim()
             if (fetchedSha !== remote.commitSha) {
                 throw new Error(`Fetched ${fetchedSha.slice(0, 12)} but GitHub reported ${remote.commitSha.slice(0, 12)}`)
             }

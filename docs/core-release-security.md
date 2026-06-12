@@ -22,7 +22,8 @@ The public repository must only receive official Core artifacts from the private
 The public repository may describe only the public contract:
 
 - publish only official compiled Core artifacts and minimal metadata;
-- pin checksums in the official manifest and plugin catalog;
+- sign the official manifest with the offline Core release key;
+- pin checksums in the signed official manifest and plugin catalog;
 - keep sensitive authority on Core-API, not in the local plugin.
 
 ## Runtime Target Rule
@@ -54,6 +55,9 @@ Allowed Core artifact types:
 - `LICENSE`;
 - `official-core.json` metadata.
 
+The detached `plugins/official-core.sig` signature and the pinned public verification key
+under `scripts/security/` are also required public release files.
+
 ## Release Gate
 
 Before pushing `main`, maintainers must verify:
@@ -68,6 +72,7 @@ When Core changed, also verify:
 
 - the private maintainer pipeline produced the official target artifacts;
 - `plugins/official-core.json` matches every shipped Core target checksum;
+- `plugins/official-core.sig` verifies the exact bytes of `plugins/official-core.json`;
 - `plugins/catalog.json` matches the same target checksum metadata;
 - the Intel macOS compatibility target is identical to its declared Linux x64 source artifact;
 - no Core source, sourcemap, `.env`, or private secret exists in the public repository.

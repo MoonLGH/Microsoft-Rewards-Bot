@@ -1,11 +1,13 @@
 const assert = require('assert/strict')
 const childProcess = require('child_process')
+const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const test = require('node:test')
 
 const { migrateUserFiles } = require('../scripts/updater/ConfigMigrator')
+const { signBytes, verifySignedBytes } = require('../scripts/security/SignedManifest')
 const {
     DEFAULT_BACKUP_PATHS,
     DEFAULT_EXCLUDES,
@@ -152,7 +154,7 @@ test('session loading source no longer contains the automation legacy fallback',
     assert.doesNotMatch(source, /getLegacySessionDir|automation\/.*sessionPath/)
 })
 
-test('updater reports current when main branch version is not newer', async () => {
+test('updater reports current when signed release version is not newer', async () => {
     const root = tempRoot()
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '2.0.0' }))
     const updater = new UpdateManager({ root, logger: { log() {}, warn() {} } })
@@ -411,11 +413,26 @@ test('updater resolves npm from portable Node runtime before global npm', () => 
     }
 })
 
-test('GitHub tarball download uses the GitHub API accept header', () => {
+test('updater requires a signed GitHub release and downloads its pinned commit', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'scripts', 'updater', 'UpdateManager.js'), 'utf8')
+    assert.match(source, /\/releases\/latest/)
+    assert.match(source, /verifySignedBytes\(manifestPayload/)
+    assert.match(source, /release\.tag_name !== manifest\.tag/)
     assert.match(source, /archiveUrl: this\.githubApiUrl\(`\/repos\/\$\{this\.repo\}\/tarball\/\$\{commitSha\}`\)/)
     assert.match(source, /accept: 'application\/vnd\.github\+json'/)
     assert.doesNotMatch(source, /downloadArchive[\s\S]+accept: 'application\/octet-stream'/)
+})
+
+test('Ed25519 manifests reject modified payloads', () => {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519')
+    const payload = Buffer.from('{"schema":1,"version":"4.5.0"}\n')
+    const signature = signBytes(payload, privateKey)
+
+    assert.doesNotThrow(() => verifySignedBytes(payload, signature, publicKey))
+    assert.throws(
+        () => verifySignedBytes(Buffer.from('{"schema":1,"version":"4.5.1"}\n'), signature, publicKey),
+        /signature verification failed/
+    )
 })
 
 test('applying release preserves user files and removes obsolete managed files', () => {
@@ -481,11 +498,14 @@ test('git updater resets to the target commit and restores user config files', a
     fs.writeFileSync(path.join(remoteWork, 'plugins', 'plugins.jsonc'), '{"core":{"enabled":false,"remote":true}}')
     commitAll(remoteWork, 'v2')
     const commitSha = git(remoteWork, ['rev-parse', 'HEAD'])
+    git(remoteWork, ['tag', 'v2.0.0'])
 
     const updater = new UpdateManager({ root: cloneRoot, logger: { log() {}, warn() {} } })
     const result = await updater.applyGitRelease({
         version: '2.0.0',
         commitSha,
+        tag: 'v2.0.0',
+        signed: true,
         packageJson: { version: '2.0.0' }
     })
 
@@ -497,6 +517,13 @@ test('git updater resets to the target commit and restores user config files', a
     assert.equal(fs.readFileSync(path.join(cloneRoot, 'plugins', 'plugins.jsonc'), 'utf8'), '{"core":{"enabled":true}}')
     assert.equal(fs.existsSync(path.join(cloneRoot, 'src', 'old.ts')), false)
     assert.equal(fs.readFileSync(path.join(cloneRoot, 'src', 'new.ts'), 'utf8'), 'new')
+})
+
+test('signed git updater fetches the signed release tag instead of the mutable branch', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'scripts', 'updater', 'UpdateManager.js'), 'utf8')
+    assert.match(source, /refs\/tags\/\$\{signedTag\}/)
+    assert.match(source, /refs\/msrb-update\/\$\{signedTag\}/)
+    assert.match(source, /`\$\{remoteRef\}\^\{commit\}`/)
 })
 
 test('failed release apply restores backed up user files', () => {

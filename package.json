@@ -1,6 +1,6 @@
 {
     "name": "microsoft-rewards-bot",
-    "version": "4.0.26",
+    "version": "4.5.0",
     "description": "Source-available Microsoft Rewards automation with multi-account support, Docker deployment, plugin extensions, Discord webhooks, and optional proprietary Core features.",
     "author": "QuestPilot",
     "license": "SEE LICENSE IN LICENSE",
@@ -26,6 +26,8 @@
         "update:doctor": "node ./scripts/update-doctor.js",
         "update:check": "node ./scripts/update-check.js --dry-run",
         "update:repair": "node ./scripts/update-check.js --force",
+        "update:manifest": "node ./scripts/create-update-manifest.js",
+        "core:sign": "node ./scripts/sign-core-manifest.js",
         "core:release-check": "node ./scripts/check-core-release-artifact.js",
         "ts-start": "ts-node ./src/index.ts",
         "predev": "node ./scripts/check-node-version.js",
