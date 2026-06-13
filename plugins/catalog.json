@@ -2,7 +2,7 @@
     "plugins":  [
                     {
                         "name":  "core",
-                        "version":  "2.0.0",
+                        "version":  "2.0.1",
                         "description":  "Official Core plugin with premium Microsoft Rewards tasks and license validation.",
                         "license":  "Proprietary",
                         "price":  "paid",
@@ -12,7 +12,7 @@
                         "sha256":  "",
                         "targets":  {
                                         "win32-x64-node-24.15.0":  {
-                                                                       "indexSha256":  "dbd371f2fbbee0df45496f78ed07de4ddc65dae1bac0be0a41cd2f65712d7544",
+                                                                       "indexSha256":  "ddcc19441a599a54d3ae3f0945d2ea522993bd35490648665b1ee0776ac49db4",
                                                                        "bytecodeTarget":  {
                                                                                               "node":  "24.15.0",
                                                                                               "platform":  "win32",
@@ -20,7 +20,7 @@
                                                                                           }
                                                                    },
                                         "linux-x64-node-24.15.0":  {
-                                                                       "indexSha256":  "dc2e28a0ee269281ceb3c45b091814c7603d4297f392535a0752b1e31bb51d17",
+                                                                       "indexSha256":  "d81c0258af00a4f8d4549f19c83aeea6c6088e067805b6a57d8944039865043d",
                                                                        "bytecodeTarget":  {
                                                                                               "node":  "24.15.0",
                                                                                               "platform":  "linux",
@@ -28,7 +28,7 @@
                                                                                           }
                                                                    },
                                         "linux-arm64-node-24.15.0":  {
-                                                                         "indexSha256":  "fc0a6aba680a762cb7423b99531df01cc020963908b1a61a65ef0c2d18a20736",
+                                                                         "indexSha256":  "3261cb9bad58c2039f838ad42ef2f8610d86d076518912d2cd88c7b865d6904b",
                                                                          "bytecodeTarget":  {
                                                                                                 "node":  "24.15.0",
                                                                                                 "platform":  "linux",
@@ -36,7 +36,7 @@
                                                                                             }
                                                                      },
                                         "darwin-x64-node-24.15.0":  {
-                                                                        "indexSha256":  "dc2e28a0ee269281ceb3c45b091814c7603d4297f392535a0752b1e31bb51d17",
+                                                                        "indexSha256":  "d81c0258af00a4f8d4549f19c83aeea6c6088e067805b6a57d8944039865043d",
                                                                         "bytecodeTarget":  {
                                                                                                "node":  "24.15.0",
                                                                                                "platform":  "darwin",
