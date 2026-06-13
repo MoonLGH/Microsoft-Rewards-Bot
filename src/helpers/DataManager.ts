@@ -126,7 +126,7 @@ async function cleanupDateJsonFiles(dir: string, cutoff: number, info: (msg: str
 
     for (const entry of entries) {
         const match = entry.match(/^(\d{4}-\d{2}-\d{2})\.(json|jsonl)$/)
-        if (!match) continue
+        if (!match || !match[1]) continue
         const entryTime = new Date(match[1]).getTime()
         if (!Number.isNaN(entryTime) && entryTime < cutoff) {
             try {
